@@ -8,7 +8,7 @@ Six-stage implementation plan following the staged development process (Requirem
 
 ## Tasks
 
-- [ ] 0. Stage 0 — Environment
+- [x] 0. Stage 0 — Environment
 
   - [x] 0.0 HUMAN STEP — Create database and ADMIN_USER
     - **HUMAN STEP**: Before any code is written, log in to MySQL as root and execute:
@@ -58,7 +58,7 @@ Six-stage implementation plan following the staged development process (Requirem
     - Weak entities note: "This schema has four weak entities: ORDER_ITEM (owner ORDERS), EVENT_WINDOW_DAY (owner BUSINESS_EVENT), QUERY_PLAN_NODE (owner QUERY_EXECUTION), FORECAST_LINE (owner FORECAST)"
     - _Requirements: 20.3, 20.5_
 
-  - [-] 0.5 Stage 0 gate
+  - [x] 0.5 Stage 0 gate
     - Run `pytest tests/test_odbc.py::test_odbc_connection tests/test_odbc.py::test_parameterized_query` — only these two tests; both must pass
     - Record MySQL version, `performance_schema` ON/OFF, and host architecture (`uname -m`) in `docs/stage_0_report.md`
     - **git commit**: `git add -A && git commit -m "Stage 0: environment"`
@@ -66,7 +66,7 @@ Six-stage implementation plan following the staged development process (Requirem
 
 - [~] 1. Stage 1 — Schema
 
-  - [~] 1.1 Write 01_ddl.sql — all 24 tables plus CONFIG
+  - [x] 1.1 Write 01_ddl.sql — all 24 tables plus CONFIG
     - All 24 tables in dependency order using `CREATE TABLE IF NOT EXISTS` only — no DROP TABLE statements in this file
     - `CONFIG` table: `config_key VARCHAR(64) PRIMARY KEY`, `config_value VARCHAR(255) NOT NULL`
     - `FACT_SALES`: composite PK `(sale_id, sale_date)`; `PARTITION BY RANGE (TO_DAYS(sale_date))` with 20 named quarterly partitions `p_FY23Q1` through `p_FY27Q4` (boundary dates 2022-10-01, 2023-01-01, … 2027-07-01) plus `p_catch MAXVALUE`; `is_synthetic BOOLEAN NOT NULL DEFAULT TRUE`; NO FK constraints; NO secondary indexes
@@ -82,14 +82,14 @@ Six-stage implementation plan following the staged development process (Requirem
     - Must NOT be called by run_migrations.sh; add a prominent comment warning at the top of the file
     - _Requirements: 3.1_
 
-  - [~] 1.2 Write 02_roles.sql — role objects and user accounts only
+  - [x] 1.2 Write 02_roles.sql — role objects and user accounts only
     - `CREATE ROLE IF NOT EXISTS`: `business_analyst`, `db_engineer`, `role_telemetry`
     - `CREATE USER IF NOT EXISTS`: `analyst_demo`, `analyst_all`, `engineer_demo`, `svc_telemetry`
     - Password placeholders: `IDENTIFIED BY '${DEMO_ANALYST_PASSWORD}'` etc. (envsubst substitutes at runtime)
     - NO GRANT statements; NO SET DEFAULT ROLE — those belong only in `07_grants.sql`
     - _Requirements: 2.8, 3.1, 3.9_
 
-  - [~] 1.3 Write 03_views.sql — all 8 views with SQL SECURITY DEFINER
+  - [x] 1.3 Write 03_views.sql — all 8 views with SQL SECURITY DEFINER
     - All views: `DROP VIEW IF EXISTS` + `CREATE VIEW ... SQL SECURITY DEFINER AS ...`
     - `v_sales`: JOIN FACT_SALES to PRODUCT, DIM_DATE, DIM_DEVICE, DIM_REGION, DIM_CHANNEL; segment filter via USER_SEGMENT_MAP; expose columns `platform`, `device_family`, `oem`, `region_name` (DIM_REGION.name), `channel_name` (DIM_CHANNEL.name); FACT_SALES must have **no alias** in this view to keep EXPLAIN ANALYZE output unambiguous
     - `v_financials`: QUARTERLY_FINANCIALS JOIN COMPANY_SEGMENT; segment filter via USER_SEGMENT_MAP
@@ -102,7 +102,7 @@ Six-stage implementation plan following the staged development process (Requirem
     - Segment filter pattern for v_sales and v_financials only: `WHERE segment_id IN (SELECT segment_id FROM USER_SEGMENT_MAP WHERE db_user = SUBSTRING_INDEX(USER(),'@',1))`
     - _Requirements: 2.1, 2.3, 10.1, 16.2_
 
-  - [~] 1.4 Write 04_routines.sql — stubs for all stored procedures
+  - [x] 1.4 Write 04_routines.sql — stubs for all stored procedures
     - All procedures: `DROP PROCEDURE IF EXISTS` + `CREATE PROCEDURE ... SQL SECURITY DEFINER`
     - Minimal stub bodies (SELECT NULL or SET p_out=NULL); correct signatures must be exact:
       - `sp_margin_decomposition(IN p_segment VARCHAR(50), IN p_period_a VARCHAR(10), IN p_period_b VARCHAR(10))`
@@ -122,7 +122,7 @@ Six-stage implementation plan following the staged development process (Requirem
     - No Oracle PL/SQL syntax anywhere in this file
     - _Requirements: 5.1, 5.2, 5.4, 7.9_
 
-  - [~] 1.5 Write 05_triggers_events.sql — triggers and scheduled events
+  - [x] 1.5 Write 05_triggers_events.sql — triggers and scheduled events
     - All triggers: `DROP TRIGGER IF EXISTS` + `CREATE TRIGGER`; all events: `DROP EVENT IF EXISTS` + `CREATE EVENT`
     - `BEFORE INSERT` trigger on `FACT_SALES`: validate `product_id` EXISTS in PRODUCT and `segment_id` EXISTS in COMPANY_SEGMENT; `SIGNAL SQLSTATE '45000'` on failure; use `SUBSTRING_INDEX(USER(),'@',1)` not `CURRENT_USER()`
     - `AFTER UPDATE` trigger on `PRICING_RULE`: INSERT into AUDIT_LOG with old/new values as JSON, `db_user = SUBSTRING_INDEX(USER(),'@',1)`, `at = NOW(3)`
@@ -132,7 +132,7 @@ Six-stage implementation plan following the staged development process (Requirem
     - EVENT `ev_recalc_forecasts`: nightly; stub body loops through BUSINESS_EVENT calling `sp_forecast_database`
     - _Requirements: 3.1, 5.3, 5.6, 5.7, 12.4, 17.2_
 
-  - [~] 1.6 Write 06_seed_reference.sql — all reference data
+  - [x] 1.6 Write 06_seed_reference.sql — all reference data
     - Use `INSERT IGNORE` or `INSERT ... ON DUPLICATE KEY UPDATE` for idempotency throughout
     - `COMPANY_SEGMENT`: Gaming, Productivity & Business Cloud, More Personal Computing
     - `DIM_DATE`: cover 2022-07-01 through 2027-06-30; set `fiscal_year`/`fiscal_quarter` (Microsoft FY ends June 30); set `is_black_friday` (last Friday of November each year); set `is_holiday`
@@ -144,7 +144,7 @@ Six-stage implementation plan following the staged development process (Requirem
     - `CONFIG`: `INSERT ('DB_ALLOCATED_MB', '10240')` as initial placeholder (overwritten after ETL completes); `INSERT ('AT_RISK_FACTOR', '1.25')` as the default at-risk multiplier
     - _Requirements: 3.7, 2.7_
 
-  - [~] 1.7 Write 07_grants.sql — ALL GRANT statements (only file with GRANTs)
+  - [x] 1.7 Write 07_grants.sql — ALL GRANT statements (only file with GRANTs)
     - GRANT to `business_analyst`: SELECT on `v_sales`, `v_financials`, `v_events`, `v_forecast_business`, `v_my_queries`; EXECUTE on `sp_margin_decomposition`, `sp_forecast_business`, `sp_update_pricing_rule`, `sp_place_order`; SHOW VIEW on all `v_*` views
     - GRANT to `db_engineer`: SELECT on `QUERY_EXECUTION`, `QUERY_PLAN_NODE`, `INDEX_RECOMMENDATION`, `DB_SIZE_SNAPSHOT`, `CONFLICT_LOG`, `v_events_min`, `v_forecast_database`, `v_partitions`; SELECT on `performance_schema`; EXECUTE on `sp_apply_index`, `sp_reject_index`, `sp_add_partition`, `sp_snapshot_sizes`, `sp_forecast_database`; SHOW VIEW on all `v_*` views
     - Note: `information_schema` is accessible to all authenticated MySQL users by default; no explicit GRANT is needed for db_engineer to query information_schema.
@@ -153,7 +153,7 @@ Six-stage implementation plan following the staged development process (Requirem
     - `SET DEFAULT ROLE ALL TO analyst_demo, analyst_all, engineer_demo, svc_telemetry`
     - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.6, 2.8, 2.9, 3.9_
 
-  - [~] 1.8 Write run_migrations.sh
+  - [x] 1.8 Write run_migrations.sh
     - Execute `01_ddl.sql` through `07_grants.sql` in order
     - Use `MYSQL_PWD` env var instead of `-p` flag; use envsubst with explicit variable list:
       ```bash
@@ -165,7 +165,7 @@ Six-stage implementation plan following the staged development process (Requirem
     - `set -euo pipefail`
     - _Requirements: 3.1, 3.6_
 
-  - [~] 1.9 Write tests/run_role_tests.sh
+  - [x] 1.9 Write tests/run_role_tests.sh
     - Sources `.env`; no running backend required
     - `assert_denied()` function: runs query as target user; asserts "ERROR 1142" appears in stderr; prints PASS or FAIL
     - `assert_row_count()` function: runs query; counts rows; asserts count equals expected value; prints PASS or FAIL
@@ -180,7 +180,7 @@ Six-stage implementation plan following the staged development process (Requirem
       - `analyst_demo SELECT COUNT(*) FROM v_sales` must equal Gaming-only row count (computed via admin)
     - _Requirements: 2.10, 18.1_
 
-  - [~] 1.10 Verify MySQL behaviours and write Stage 1 report
+  - [-] 1.10 Verify MySQL behaviours and write Stage 1 report
     - Run each verification from the MySQL Behaviour Verification table on the target instance:
       1. EXPLAIN ANALYZE format: run `EXPLAIN ANALYZE SELECT 1`; record actual indentation pattern and `actual time=N..M rows=R loops=L` format
       2. Invisible indexes: create test table; add INVISIBLE index; verify EXPLAIN skips it; set `use_invisible_indexes=on`; verify EXPLAIN uses it; drop test table; record whether VISIBLE/INVISIBLE status appears in `information_schema.STATISTICS`

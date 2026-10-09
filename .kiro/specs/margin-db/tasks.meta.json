@@ -96,6 +96,11 @@
         "executionId": "2f4ea6ce-fcc4-47a2-a697-f6f7595c740e",
         "chatSessionId": "sess_2d7f1149-28e2-48c7-a31a-b7b91a208652",
         "timestamp": 1791562978202
+      },
+      {
+        "executionId": "2f4ea6ce-fcc4-47a2-a697-f6f7595c740e",
+        "chatSessionId": "sess_2d7f1149-28e2-48c7-a31a-b7b91a208652",
+        "timestamp": 1791563162973
       }
     ],
     "1. Stage 1 — Schema": [
@@ -110,6 +115,16 @@
         "executionId": "a5d6ebb4-856a-4200-b472-e3bf7b24a6c0",
         "chatSessionId": "sess_2d7f1149-28e2-48c7-a31a-b7b91a208652",
         "timestamp": 1791560339467
+      },
+      {
+        "executionId": "2f4ea6ce-fcc4-47a2-a697-f6f7595c740e",
+        "chatSessionId": "sess_2d7f1149-28e2-48c7-a31a-b7b91a208652",
+        "timestamp": 1791563166910
+      },
+      {
+        "executionId": "2f4ea6ce-fcc4-47a2-a697-f6f7595c740e",
+        "chatSessionId": "sess_2d7f1149-28e2-48c7-a31a-b7b91a208652",
+        "timestamp": 1791563300134
       }
     ],
     "1.2 Write 02_roles.sql — role objects and user accounts only": [
@@ -117,6 +132,16 @@
         "executionId": "a5d6ebb4-856a-4200-b472-e3bf7b24a6c0",
         "chatSessionId": "sess_2d7f1149-28e2-48c7-a31a-b7b91a208652",
         "timestamp": 1791560339492
+      },
+      {
+        "executionId": "2f4ea6ce-fcc4-47a2-a697-f6f7595c740e",
+        "chatSessionId": "sess_2d7f1149-28e2-48c7-a31a-b7b91a208652",
+        "timestamp": 1791563170135
+      },
+      {
+        "executionId": "2f4ea6ce-fcc4-47a2-a697-f6f7595c740e",
+        "chatSessionId": "sess_2d7f1149-28e2-48c7-a31a-b7b91a208652",
+        "timestamp": 1791563300158
       }
     ],
     "1.3 Write 03_views.sql — all 8 views with SQL SECURITY DEFINER": [
@@ -124,6 +149,16 @@
         "executionId": "a5d6ebb4-856a-4200-b472-e3bf7b24a6c0",
         "chatSessionId": "sess_2d7f1149-28e2-48c7-a31a-b7b91a208652",
         "timestamp": 1791560339526
+      },
+      {
+        "executionId": "2f4ea6ce-fcc4-47a2-a697-f6f7595c740e",
+        "chatSessionId": "sess_2d7f1149-28e2-48c7-a31a-b7b91a208652",
+        "timestamp": 1791563606544
+      },
+      {
+        "executionId": "2f4ea6ce-fcc4-47a2-a697-f6f7595c740e",
+        "chatSessionId": "sess_2d7f1149-28e2-48c7-a31a-b7b91a208652",
+        "timestamp": 1791563687675
       }
     ],
     "1.4 Write 04_routines.sql — stubs for all stored procedures": [
@@ -131,6 +166,16 @@
         "executionId": "a5d6ebb4-856a-4200-b472-e3bf7b24a6c0",
         "chatSessionId": "sess_2d7f1149-28e2-48c7-a31a-b7b91a208652",
         "timestamp": 1791560339559
+      },
+      {
+        "executionId": "2f4ea6ce-fcc4-47a2-a697-f6f7595c740e",
+        "chatSessionId": "sess_2d7f1149-28e2-48c7-a31a-b7b91a208652",
+        "timestamp": 1791563610136
+      },
+      {
+        "executionId": "2f4ea6ce-fcc4-47a2-a697-f6f7595c740e",
+        "chatSessionId": "sess_2d7f1149-28e2-48c7-a31a-b7b91a208652",
+        "timestamp": 1791563688145
       }
     ],
     "1.5 Write 05_triggers_events.sql — triggers and scheduled events": [
@@ -138,6 +183,16 @@
         "executionId": "a5d6ebb4-856a-4200-b472-e3bf7b24a6c0",
         "chatSessionId": "sess_2d7f1149-28e2-48c7-a31a-b7b91a208652",
         "timestamp": 1791560339583
+      },
+      {
+        "executionId": "2f4ea6ce-fcc4-47a2-a697-f6f7595c740e",
+        "chatSessionId": "sess_2d7f1149-28e2-48c7-a31a-b7b91a208652",
+        "timestamp": 1791563692110
+      },
+      {
+        "executionId": "2f4ea6ce-fcc4-47a2-a697-f6f7595c740e",
+        "chatSessionId": "sess_2d7f1149-28e2-48c7-a31a-b7b91a208652",
+        "timestamp": 1791563855397
       }
     ],
     "1.6 Write 06_seed_reference.sql — all reference data": [
@@ -145,6 +200,16 @@
         "executionId": "a5d6ebb4-856a-4200-b472-e3bf7b24a6c0",
         "chatSessionId": "sess_2d7f1149-28e2-48c7-a31a-b7b91a208652",
         "timestamp": 1791560339609
+      },
+      {
+        "executionId": "2f4ea6ce-fcc4-47a2-a697-f6f7595c740e",
+        "chatSessionId": "sess_2d7f1149-28e2-48c7-a31a-b7b91a208652",
+        "timestamp": 1791563697516
+      },
+      {
+        "executionId": "2f4ea6ce-fcc4-47a2-a697-f6f7595c740e",
+        "chatSessionId": "sess_2d7f1149-28e2-48c7-a31a-b7b91a208652",
+        "timestamp": 1791563854963
       }
     ],
     "1.7 Write 07_grants.sql — ALL GRANT statements (only file with GRANTs)": [
@@ -152,6 +217,16 @@
         "executionId": "a5d6ebb4-856a-4200-b472-e3bf7b24a6c0",
         "chatSessionId": "sess_2d7f1149-28e2-48c7-a31a-b7b91a208652",
         "timestamp": 1791560339634
+      },
+      {
+        "executionId": "2f4ea6ce-fcc4-47a2-a697-f6f7595c740e",
+        "chatSessionId": "sess_2d7f1149-28e2-48c7-a31a-b7b91a208652",
+        "timestamp": 1791563859463
+      },
+      {
+        "executionId": "2f4ea6ce-fcc4-47a2-a697-f6f7595c740e",
+        "chatSessionId": "sess_2d7f1149-28e2-48c7-a31a-b7b91a208652",
+        "timestamp": 1791564228305
       }
     ],
     "1.8 Write run_migrations.sh": [
@@ -159,6 +234,16 @@
         "executionId": "a5d6ebb4-856a-4200-b472-e3bf7b24a6c0",
         "chatSessionId": "sess_2d7f1149-28e2-48c7-a31a-b7b91a208652",
         "timestamp": 1791560339658
+      },
+      {
+        "executionId": "2f4ea6ce-fcc4-47a2-a697-f6f7595c740e",
+        "chatSessionId": "sess_2d7f1149-28e2-48c7-a31a-b7b91a208652",
+        "timestamp": 1791563862999
+      },
+      {
+        "executionId": "2f4ea6ce-fcc4-47a2-a697-f6f7595c740e",
+        "chatSessionId": "sess_2d7f1149-28e2-48c7-a31a-b7b91a208652",
+        "timestamp": 1791564227934
       }
     ],
     "1.9 Write tests/run_role_tests.sh": [
@@ -166,6 +251,16 @@
         "executionId": "a5d6ebb4-856a-4200-b472-e3bf7b24a6c0",
         "chatSessionId": "sess_2d7f1149-28e2-48c7-a31a-b7b91a208652",
         "timestamp": 1791560339690
+      },
+      {
+        "executionId": "2f4ea6ce-fcc4-47a2-a697-f6f7595c740e",
+        "chatSessionId": "sess_2d7f1149-28e2-48c7-a31a-b7b91a208652",
+        "timestamp": 1791564231945
+      },
+      {
+        "executionId": "2f4ea6ce-fcc4-47a2-a697-f6f7595c740e",
+        "chatSessionId": "sess_2d7f1149-28e2-48c7-a31a-b7b91a208652",
+        "timestamp": 1791564362879
       }
     ],
     "1.10 Verify MySQL behaviours and write Stage 1 report": [
@@ -173,6 +268,11 @@
         "executionId": "a5d6ebb4-856a-4200-b472-e3bf7b24a6c0",
         "chatSessionId": "sess_2d7f1149-28e2-48c7-a31a-b7b91a208652",
         "timestamp": 1791560339716
+      },
+      {
+        "executionId": "2f4ea6ce-fcc4-47a2-a697-f6f7595c740e",
+        "chatSessionId": "sess_2d7f1149-28e2-48c7-a31a-b7b91a208652",
+        "timestamp": 1791564366856
       }
     ],
     "2.1 Write fetch_edgar.py": [
@@ -537,6 +637,13 @@
         "executionId": "a5d6ebb4-856a-4200-b472-e3bf7b24a6c0",
         "chatSessionId": "sess_2d7f1149-28e2-48c7-a31a-b7b91a208652",
         "timestamp": 1791560341035
+      }
+    ],
+    "0. Stage 0 — Environment": [
+      {
+        "executionId": "2f4ea6ce-fcc4-47a2-a697-f6f7595c740e",
+        "chatSessionId": "sess_2d7f1149-28e2-48c7-a31a-b7b91a208652",
+        "timestamp": 1791563163009
       }
     ]
   }

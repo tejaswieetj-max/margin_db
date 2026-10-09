@@ -14,9 +14,6 @@ dist/
 data/clean/
 data/raw/msft_facts.json
 
-# SQL migration files (generated/sensitive)
-*.sql
-
 # Force-include committed seed files
 !data/raw/events.csv
 !data/raw/segments.csv
