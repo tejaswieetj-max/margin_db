@@ -1,0 +1,543 @@
+{
+  "pbtResults": {},
+  "executionHistory": {
+    "0.0 HUMAN STEP — Create database and ADMIN_USER": [
+      {
+        "executionId": "a5d6ebb4-856a-4200-b472-e3bf7b24a6c0",
+        "chatSessionId": "sess_2d7f1149-28e2-48c7-a31a-b7b91a208652",
+        "timestamp": 1791560339163
+      },
+      {
+        "executionId": "a5d6ebb4-856a-4200-b472-e3bf7b24a6c0",
+        "chatSessionId": "sess_2d7f1149-28e2-48c7-a31a-b7b91a208652",
+        "timestamp": 1791560349413
+      }
+    ],
+    "0.1 Create repository skeleton and Python virtual environment": [
+      {
+        "executionId": "a5d6ebb4-856a-4200-b472-e3bf7b24a6c0",
+        "chatSessionId": "sess_2d7f1149-28e2-48c7-a31a-b7b91a208652",
+        "timestamp": 1791560339266
+      },
+      {
+        "executionId": "0cfe0bef-e093-44bf-a696-1563ba4273c0",
+        "chatSessionId": "sess_2d7f1149-28e2-48c7-a31a-b7b91a208652",
+        "timestamp": 1791561277167
+      },
+      {
+        "executionId": "0cfe0bef-e093-44bf-a696-1563ba4273c0",
+        "chatSessionId": "sess_2d7f1149-28e2-48c7-a31a-b7b91a208652",
+        "timestamp": 1791561840773
+      }
+    ],
+    "0.2 Scaffold React + Vite frontend": [
+      {
+        "executionId": "a5d6ebb4-856a-4200-b472-e3bf7b24a6c0",
+        "chatSessionId": "sess_2d7f1149-28e2-48c7-a31a-b7b91a208652",
+        "timestamp": 1791560339328
+      },
+      {
+        "executionId": "0cfe0bef-e093-44bf-a696-1563ba4273c0",
+        "chatSessionId": "sess_2d7f1149-28e2-48c7-a31a-b7b91a208652",
+        "timestamp": 1791561280002
+      },
+      {
+        "executionId": "0cfe0bef-e093-44bf-a696-1563ba4273c0",
+        "chatSessionId": "sess_2d7f1149-28e2-48c7-a31a-b7b91a208652",
+        "timestamp": 1791561840996
+      }
+    ],
+    "0.3 Write test_odbc.py — Stage 0 version (connect + SELECT ? only)": [
+      {
+        "executionId": "a5d6ebb4-856a-4200-b472-e3bf7b24a6c0",
+        "chatSessionId": "sess_2d7f1149-28e2-48c7-a31a-b7b91a208652",
+        "timestamp": 1791560339358
+      },
+      {
+        "executionId": "0cfe0bef-e093-44bf-a696-1563ba4273c0",
+        "chatSessionId": "sess_2d7f1149-28e2-48c7-a31a-b7b91a208652",
+        "timestamp": 1791561844874
+      },
+      {
+        "executionId": "0cfe0bef-e093-44bf-a696-1563ba4273c0",
+        "chatSessionId": "sess_2d7f1149-28e2-48c7-a31a-b7b91a208652",
+        "timestamp": 1791562063262
+      }
+    ],
+    "0.4 Write README.md": [
+      {
+        "executionId": "a5d6ebb4-856a-4200-b472-e3bf7b24a6c0",
+        "chatSessionId": "sess_2d7f1149-28e2-48c7-a31a-b7b91a208652",
+        "timestamp": 1791560339381
+      },
+      {
+        "executionId": "0cfe0bef-e093-44bf-a696-1563ba4273c0",
+        "chatSessionId": "sess_2d7f1149-28e2-48c7-a31a-b7b91a208652",
+        "timestamp": 1791561848555
+      },
+      {
+        "executionId": "0cfe0bef-e093-44bf-a696-1563ba4273c0",
+        "chatSessionId": "sess_2d7f1149-28e2-48c7-a31a-b7b91a208652",
+        "timestamp": 1791562063407
+      }
+    ],
+    "0.5 Stage 0 gate": [
+      {
+        "executionId": "a5d6ebb4-856a-4200-b472-e3bf7b24a6c0",
+        "chatSessionId": "sess_2d7f1149-28e2-48c7-a31a-b7b91a208652",
+        "timestamp": 1791560339415
+      },
+      {
+        "executionId": "0cfe0bef-e093-44bf-a696-1563ba4273c0",
+        "chatSessionId": "sess_2d7f1149-28e2-48c7-a31a-b7b91a208652",
+        "timestamp": 1791562067211
+      },
+      {
+        "executionId": "2f4ea6ce-fcc4-47a2-a697-f6f7595c740e",
+        "chatSessionId": "sess_2d7f1149-28e2-48c7-a31a-b7b91a208652",
+        "timestamp": 1791562978202
+      }
+    ],
+    "1. Stage 1 — Schema": [
+      {
+        "executionId": "a5d6ebb4-856a-4200-b472-e3bf7b24a6c0",
+        "chatSessionId": "sess_2d7f1149-28e2-48c7-a31a-b7b91a208652",
+        "timestamp": 1791560339445
+      }
+    ],
+    "1.1 Write 01_ddl.sql — all 24 tables plus CONFIG": [
+      {
+        "executionId": "a5d6ebb4-856a-4200-b472-e3bf7b24a6c0",
+        "chatSessionId": "sess_2d7f1149-28e2-48c7-a31a-b7b91a208652",
+        "timestamp": 1791560339467
+      }
+    ],
+    "1.2 Write 02_roles.sql — role objects and user accounts only": [
+      {
+        "executionId": "a5d6ebb4-856a-4200-b472-e3bf7b24a6c0",
+        "chatSessionId": "sess_2d7f1149-28e2-48c7-a31a-b7b91a208652",
+        "timestamp": 1791560339492
+      }
+    ],
+    "1.3 Write 03_views.sql — all 8 views with SQL SECURITY DEFINER": [
+      {
+        "executionId": "a5d6ebb4-856a-4200-b472-e3bf7b24a6c0",
+        "chatSessionId": "sess_2d7f1149-28e2-48c7-a31a-b7b91a208652",
+        "timestamp": 1791560339526
+      }
+    ],
+    "1.4 Write 04_routines.sql — stubs for all stored procedures": [
+      {
+        "executionId": "a5d6ebb4-856a-4200-b472-e3bf7b24a6c0",
+        "chatSessionId": "sess_2d7f1149-28e2-48c7-a31a-b7b91a208652",
+        "timestamp": 1791560339559
+      }
+    ],
+    "1.5 Write 05_triggers_events.sql — triggers and scheduled events": [
+      {
+        "executionId": "a5d6ebb4-856a-4200-b472-e3bf7b24a6c0",
+        "chatSessionId": "sess_2d7f1149-28e2-48c7-a31a-b7b91a208652",
+        "timestamp": 1791560339583
+      }
+    ],
+    "1.6 Write 06_seed_reference.sql — all reference data": [
+      {
+        "executionId": "a5d6ebb4-856a-4200-b472-e3bf7b24a6c0",
+        "chatSessionId": "sess_2d7f1149-28e2-48c7-a31a-b7b91a208652",
+        "timestamp": 1791560339609
+      }
+    ],
+    "1.7 Write 07_grants.sql — ALL GRANT statements (only file with GRANTs)": [
+      {
+        "executionId": "a5d6ebb4-856a-4200-b472-e3bf7b24a6c0",
+        "chatSessionId": "sess_2d7f1149-28e2-48c7-a31a-b7b91a208652",
+        "timestamp": 1791560339634
+      }
+    ],
+    "1.8 Write run_migrations.sh": [
+      {
+        "executionId": "a5d6ebb4-856a-4200-b472-e3bf7b24a6c0",
+        "chatSessionId": "sess_2d7f1149-28e2-48c7-a31a-b7b91a208652",
+        "timestamp": 1791560339658
+      }
+    ],
+    "1.9 Write tests/run_role_tests.sh": [
+      {
+        "executionId": "a5d6ebb4-856a-4200-b472-e3bf7b24a6c0",
+        "chatSessionId": "sess_2d7f1149-28e2-48c7-a31a-b7b91a208652",
+        "timestamp": 1791560339690
+      }
+    ],
+    "1.10 Verify MySQL behaviours and write Stage 1 report": [
+      {
+        "executionId": "a5d6ebb4-856a-4200-b472-e3bf7b24a6c0",
+        "chatSessionId": "sess_2d7f1149-28e2-48c7-a31a-b7b91a208652",
+        "timestamp": 1791560339716
+      }
+    ],
+    "2.1 Write fetch_edgar.py": [
+      {
+        "executionId": "a5d6ebb4-856a-4200-b472-e3bf7b24a6c0",
+        "chatSessionId": "sess_2d7f1149-28e2-48c7-a31a-b7b91a208652",
+        "timestamp": 1791560339740
+      }
+    ],
+    "2.2 Write load_financials.py": [
+      {
+        "executionId": "a5d6ebb4-856a-4200-b472-e3bf7b24a6c0",
+        "chatSessionId": "sess_2d7f1149-28e2-48c7-a31a-b7b91a208652",
+        "timestamp": 1791560339767
+      }
+    ],
+    "2.3 HUMAN STEP — provide segments.csv": [
+      {
+        "executionId": "a5d6ebb4-856a-4200-b472-e3bf7b24a6c0",
+        "chatSessionId": "sess_2d7f1149-28e2-48c7-a31a-b7b91a208652",
+        "timestamp": 1791560339798
+      }
+    ],
+    "2.4 HUMAN STEP — provide steam_players.csv": [
+      {
+        "executionId": "a5d6ebb4-856a-4200-b472-e3bf7b24a6c0",
+        "chatSessionId": "sess_2d7f1149-28e2-48c7-a31a-b7b91a208652",
+        "timestamp": 1791560339825
+      }
+    ],
+    "2.5 Write load_steam.py — STEAM_PLAYER only": [
+      {
+        "executionId": "a5d6ebb4-856a-4200-b472-e3bf7b24a6c0",
+        "chatSessionId": "sess_2d7f1149-28e2-48c7-a31a-b7b91a208652",
+        "timestamp": 1791560339861
+      }
+    ],
+    "2.6 Write load_trends.py": [
+      {
+        "executionId": "a5d6ebb4-856a-4200-b472-e3bf7b24a6c0",
+        "chatSessionId": "sess_2d7f1149-28e2-48c7-a31a-b7b91a208652",
+        "timestamp": 1791560339896
+      }
+    ],
+    "2.7 HUMAN STEP — provide events.csv": [
+      {
+        "executionId": "a5d6ebb4-856a-4200-b472-e3bf7b24a6c0",
+        "chatSessionId": "sess_2d7f1149-28e2-48c7-a31a-b7b91a208652",
+        "timestamp": 1791560339921
+      }
+    ],
+    "2.8 Write load_events.py": [
+      {
+        "executionId": "a5d6ebb4-856a-4200-b472-e3bf7b24a6c0",
+        "chatSessionId": "sess_2d7f1149-28e2-48c7-a31a-b7b91a208652",
+        "timestamp": 1791560339945
+      }
+    ],
+    "2.9 Write compute_event_windows.py": [
+      {
+        "executionId": "a5d6ebb4-856a-4200-b472-e3bf7b24a6c0",
+        "chatSessionId": "sess_2d7f1149-28e2-48c7-a31a-b7b91a208652",
+        "timestamp": 1791560339972
+      }
+    ],
+    "2.10 Write gen_synthetic_sales.py": [
+      {
+        "executionId": "a5d6ebb4-856a-4200-b472-e3bf7b24a6c0",
+        "chatSessionId": "sess_2d7f1149-28e2-48c7-a31a-b7b91a208652",
+        "timestamp": 1791560340006
+      }
+    ],
+    "2.11 Write load_sales.sh — ETL master orchestrator": [
+      {
+        "executionId": "a5d6ebb4-856a-4200-b472-e3bf7b24a6c0",
+        "chatSessionId": "sess_2d7f1149-28e2-48c7-a31a-b7b91a208652",
+        "timestamp": 1791560340030
+      }
+    ],
+    "2.12 Stage 2 gate — seq-scan verification": [
+      {
+        "executionId": "a5d6ebb4-856a-4200-b472-e3bf7b24a6c0",
+        "chatSessionId": "sess_2d7f1149-28e2-48c7-a31a-b7b91a208652",
+        "timestamp": 1791560340051
+      }
+    ],
+    "3.1 Implement sp_snapshot_sizes and 90-day backfill": [
+      {
+        "executionId": "a5d6ebb4-856a-4200-b472-e3bf7b24a6c0",
+        "chatSessionId": "sess_2d7f1149-28e2-48c7-a31a-b7b91a208652",
+        "timestamp": 1791560340075
+      }
+    ],
+    "3.2 Implement sp_margin_decomposition": [
+      {
+        "executionId": "a5d6ebb4-856a-4200-b472-e3bf7b24a6c0",
+        "chatSessionId": "sess_2d7f1149-28e2-48c7-a31a-b7b91a208652",
+        "timestamp": 1791560340100
+      }
+    ],
+    "3.3 Implement sp_forecast_business": [
+      {
+        "executionId": "a5d6ebb4-856a-4200-b472-e3bf7b24a6c0",
+        "chatSessionId": "sess_2d7f1149-28e2-48c7-a31a-b7b91a208652",
+        "timestamp": 1791560340124
+      }
+    ],
+    "3.4 Implement sp_update_pricing_rule": [
+      {
+        "executionId": "a5d6ebb4-856a-4200-b472-e3bf7b24a6c0",
+        "chatSessionId": "sess_2d7f1149-28e2-48c7-a31a-b7b91a208652",
+        "timestamp": 1791560340147
+      }
+    ],
+    "3.5 Implement sp_place_order": [
+      {
+        "executionId": "a5d6ebb4-856a-4200-b472-e3bf7b24a6c0",
+        "chatSessionId": "sess_2d7f1149-28e2-48c7-a31a-b7b91a208652",
+        "timestamp": 1791560340172
+      }
+    ],
+    "3.6 Implement sp_recommend_index and sp_record_index_test": [
+      {
+        "executionId": "a5d6ebb4-856a-4200-b472-e3bf7b24a6c0",
+        "chatSessionId": "sess_2d7f1149-28e2-48c7-a31a-b7b91a208652",
+        "timestamp": 1791560340196
+      }
+    ],
+    "3.7 Implement sp_apply_index and sp_reject_index": [
+      {
+        "executionId": "a5d6ebb4-856a-4200-b472-e3bf7b24a6c0",
+        "chatSessionId": "sess_2d7f1149-28e2-48c7-a31a-b7b91a208652",
+        "timestamp": 1791560340221
+      }
+    ],
+    "3.8 Implement sp_add_partition": [
+      {
+        "executionId": "a5d6ebb4-856a-4200-b472-e3bf7b24a6c0",
+        "chatSessionId": "sess_2d7f1149-28e2-48c7-a31a-b7b91a208652",
+        "timestamp": 1791560340242
+      }
+    ],
+    "3.9 Implement sp_forecast_database": [
+      {
+        "executionId": "a5d6ebb4-856a-4200-b472-e3bf7b24a6c0",
+        "chatSessionId": "sess_2d7f1149-28e2-48c7-a31a-b7b91a208652",
+        "timestamp": 1791560340268
+      }
+    ],
+    "3.10 Implement sp_insert_qe and sp_insert_qpn": [
+      {
+        "executionId": "a5d6ebb4-856a-4200-b472-e3bf7b24a6c0",
+        "chatSessionId": "sess_2d7f1149-28e2-48c7-a31a-b7b91a208652",
+        "timestamp": 1791560340292
+      }
+    ],
+    "3.11 Write property-based test for optimistic lock (Property 1)": [
+      {
+        "executionId": "a5d6ebb4-856a-4200-b472-e3bf7b24a6c0",
+        "chatSessionId": "sess_2d7f1149-28e2-48c7-a31a-b7b91a208652",
+        "timestamp": 1791560340332
+      }
+    ],
+    "3.12 Write property-based test for pct_time invariant (Property 2)": [
+      {
+        "executionId": "a5d6ebb4-856a-4200-b472-e3bf7b24a6c0",
+        "chatSessionId": "sess_2d7f1149-28e2-48c7-a31a-b7b91a208652",
+        "timestamp": 1791560340354
+      }
+    ],
+    "3.13 Write property-based test for SQL console multi-statement rejection (Property 6)": [
+      {
+        "executionId": "a5d6ebb4-856a-4200-b472-e3bf7b24a6c0",
+        "chatSessionId": "sess_2d7f1149-28e2-48c7-a31a-b7b91a208652",
+        "timestamp": 1791560340378
+      }
+    ],
+    "3.14 Stage 3 gate": [
+      {
+        "executionId": "a5d6ebb4-856a-4200-b472-e3bf7b24a6c0",
+        "chatSessionId": "sess_2d7f1149-28e2-48c7-a31a-b7b91a208652",
+        "timestamp": 1791560340401
+      }
+    ],
+    "4.1 Implement main.py": [
+      {
+        "executionId": "a5d6ebb4-856a-4200-b472-e3bf7b24a6c0",
+        "chatSessionId": "sess_2d7f1149-28e2-48c7-a31a-b7b91a208652",
+        "timestamp": 1791560340428
+      }
+    ],
+    "4.2 Implement auth.py — JWT authentication with pyjwt": [
+      {
+        "executionId": "a5d6ebb4-856a-4200-b472-e3bf7b24a6c0",
+        "chatSessionId": "sess_2d7f1149-28e2-48c7-a31a-b7b91a208652",
+        "timestamp": 1791560340450
+      }
+    ],
+    "4.3 Implement db.py — ODBC helpers": [
+      {
+        "executionId": "a5d6ebb4-856a-4200-b472-e3bf7b24a6c0",
+        "chatSessionId": "sess_2d7f1149-28e2-48c7-a31a-b7b91a208652",
+        "timestamp": 1791560340473
+      }
+    ],
+    "4.4 Implement telemetry.py — EXPLAIN ANALYZE, plan parser, background task": [
+      {
+        "executionId": "a5d6ebb4-856a-4200-b472-e3bf7b24a6c0",
+        "chatSessionId": "sess_2d7f1149-28e2-48c7-a31a-b7b91a208652",
+        "timestamp": 1791560340496
+      }
+    ],
+    "4.5 Implement analyst router": [
+      {
+        "executionId": "a5d6ebb4-856a-4200-b472-e3bf7b24a6c0",
+        "chatSessionId": "sess_2d7f1149-28e2-48c7-a31a-b7b91a208652",
+        "timestamp": 1791560340518
+      }
+    ],
+    "4.6 Implement engineer router": [
+      {
+        "executionId": "a5d6ebb4-856a-4200-b472-e3bf7b24a6c0",
+        "chatSessionId": "sess_2d7f1149-28e2-48c7-a31a-b7b91a208652",
+        "timestamp": 1791560340544
+      }
+    ],
+    "4.7 Implement Pydantic request and response models": [
+      {
+        "executionId": "a5d6ebb4-856a-4200-b472-e3bf7b24a6c0",
+        "chatSessionId": "sess_2d7f1149-28e2-48c7-a31a-b7b91a208652",
+        "timestamp": 1791560340567
+      }
+    ],
+    "4.8 Write test_concurrency.py": [
+      {
+        "executionId": "a5d6ebb4-856a-4200-b472-e3bf7b24a6c0",
+        "chatSessionId": "sess_2d7f1149-28e2-48c7-a31a-b7b91a208652",
+        "timestamp": 1791560340590
+      }
+    ],
+    "4.9 Write property-based test for full-scan flag rule completeness (Property 3)": [
+      {
+        "executionId": "a5d6ebb4-856a-4200-b472-e3bf7b24a6c0",
+        "chatSessionId": "sess_2d7f1149-28e2-48c7-a31a-b7b91a208652",
+        "timestamp": 1791560340612
+      }
+    ],
+    "4.10 Write property-based test for projected query duration formula (Property 5)": [
+      {
+        "executionId": "a5d6ebb4-856a-4200-b472-e3bf7b24a6c0",
+        "chatSessionId": "sess_2d7f1149-28e2-48c7-a31a-b7b91a208652",
+        "timestamp": 1791560340635
+      }
+    ],
+    "4.11 Write test_demo_loop.py": [
+      {
+        "executionId": "a5d6ebb4-856a-4200-b472-e3bf7b24a6c0",
+        "chatSessionId": "sess_2d7f1149-28e2-48c7-a31a-b7b91a208652",
+        "timestamp": 1791560340659
+      }
+    ],
+    "4.12 Stage 4 gate": [
+      {
+        "executionId": "a5d6ebb4-856a-4200-b472-e3bf7b24a6c0",
+        "chatSessionId": "sess_2d7f1149-28e2-48c7-a31a-b7b91a208652",
+        "timestamp": 1791560340682
+      }
+    ],
+    "5.1 Implement API client and auth hooks": [
+      {
+        "executionId": "a5d6ebb4-856a-4200-b472-e3bf7b24a6c0",
+        "chatSessionId": "sess_2d7f1149-28e2-48c7-a31a-b7b91a208652",
+        "timestamp": 1791560340707
+      }
+    ],
+    "5.2 Implement ProtectedRoute, RoleRoute, and router setup": [
+      {
+        "executionId": "a5d6ebb4-856a-4200-b472-e3bf7b24a6c0",
+        "chatSessionId": "sess_2d7f1149-28e2-48c7-a31a-b7b91a208652",
+        "timestamp": 1791560340731
+      }
+    ],
+    "5.3 Implement Login page": [
+      {
+        "executionId": "a5d6ebb4-856a-4200-b472-e3bf7b24a6c0",
+        "chatSessionId": "sess_2d7f1149-28e2-48c7-a31a-b7b91a208652",
+        "timestamp": 1791560340755
+      }
+    ],
+    "5.4 HUMAN STEP — Stitch export": [
+      {
+        "executionId": "a5d6ebb4-856a-4200-b472-e3bf7b24a6c0",
+        "chatSessionId": "sess_2d7f1149-28e2-48c7-a31a-b7b91a208652",
+        "timestamp": 1791560340777
+      }
+    ],
+    "5.5 Implement analyst EventCalendar page": [
+      {
+        "executionId": "a5d6ebb4-856a-4200-b472-e3bf7b24a6c0",
+        "chatSessionId": "sess_2d7f1149-28e2-48c7-a31a-b7b91a208652",
+        "timestamp": 1791560340801
+      }
+    ],
+    "5.6 Implement analyst MarginDecomposition page": [
+      {
+        "executionId": "a5d6ebb4-856a-4200-b472-e3bf7b24a6c0",
+        "chatSessionId": "sess_2d7f1149-28e2-48c7-a31a-b7b91a208652",
+        "timestamp": 1791560340825
+      }
+    ],
+    "5.7 Implement analyst BusinessForecast page": [
+      {
+        "executionId": "a5d6ebb4-856a-4200-b472-e3bf7b24a6c0",
+        "chatSessionId": "sess_2d7f1149-28e2-48c7-a31a-b7b91a208652",
+        "timestamp": 1791560340848
+      }
+    ],
+    "5.8 Implement analyst SqlConsole and MyQueries pages": [
+      {
+        "executionId": "a5d6ebb4-856a-4200-b472-e3bf7b24a6c0",
+        "chatSessionId": "sess_2d7f1149-28e2-48c7-a31a-b7b91a208652",
+        "timestamp": 1791560340872
+      }
+    ],
+    "5.9 Implement engineer WorkloadMonitor and SlowQueryQueue pages": [
+      {
+        "executionId": "a5d6ebb4-856a-4200-b472-e3bf7b24a6c0",
+        "chatSessionId": "sess_2d7f1149-28e2-48c7-a31a-b7b91a208652",
+        "timestamp": 1791560340896
+      }
+    ],
+    "5.10 Implement engineer IndexApproval page": [
+      {
+        "executionId": "a5d6ebb4-856a-4200-b472-e3bf7b24a6c0",
+        "chatSessionId": "sess_2d7f1149-28e2-48c7-a31a-b7b91a208652",
+        "timestamp": 1791560340918
+      }
+    ],
+    "5.11 Implement engineer PartitionManager and CapacityForecast pages": [
+      {
+        "executionId": "a5d6ebb4-856a-4200-b472-e3bf7b24a6c0",
+        "chatSessionId": "sess_2d7f1149-28e2-48c7-a31a-b7b91a208652",
+        "timestamp": 1791560340949
+      }
+    ],
+    "5.12 Implement engineer EngineerEventCalendar and ConflictLog pages": [
+      {
+        "executionId": "a5d6ebb4-856a-4200-b472-e3bf7b24a6c0",
+        "chatSessionId": "sess_2d7f1149-28e2-48c7-a31a-b7b91a208652",
+        "timestamp": 1791560340989
+      }
+    ],
+    "5.13 Wire Stitch-export components to live API (required)": [
+      {
+        "executionId": "a5d6ebb4-856a-4200-b472-e3bf7b24a6c0",
+        "chatSessionId": "sess_2d7f1149-28e2-48c7-a31a-b7b91a208652",
+        "timestamp": 1791560341013
+      }
+    ],
+    "5.14 Stage 5 gate": [
+      {
+        "executionId": "a5d6ebb4-856a-4200-b472-e3bf7b24a6c0",
+        "chatSessionId": "sess_2d7f1149-28e2-48c7-a31a-b7b91a208652",
+        "timestamp": 1791560341035
+      }
+    ]
+  }
+}

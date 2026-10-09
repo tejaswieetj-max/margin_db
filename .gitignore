@@ -1,0 +1,22 @@
+# Secrets
+.env
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Node
+node_modules/
+dist/
+
+# Generated data
+data/clean/
+data/raw/msft_facts.json
+
+# SQL migration files (generated/sensitive)
+*.sql
+
+# Force-include committed seed files
+!data/raw/events.csv
+!data/raw/segments.csv
