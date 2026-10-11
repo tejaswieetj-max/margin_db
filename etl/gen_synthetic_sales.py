@@ -219,7 +219,7 @@ def load_dimensions(conn: mysql.connector.MySQLConnection) -> dict:
 def load_quarterly_financials(conn: mysql.connector.MySQLConnection) -> dict:
     """Load QUARTERLY_FINANCIALS revenue for FY23Q1–FY26Q4.
 
-    Returns a dict keyed by (fiscal_year, fiscal_quarter, segment_id) → revenue (float USD).
+    Returns a dict keyed by (fiscal_year, fiscal_quarter, segment_id) → revenue (float, millions USD).
     """
     cursor = conn.cursor()
     cursor.execute(
@@ -236,6 +236,39 @@ def load_quarterly_financials(conn: mysql.connector.MySQLConnection) -> dict:
     cursor.close()
     logger.info("Loaded %d QUARTERLY_FINANCIALS rows (FY23–FY26)", len(financials))
     return financials
+
+
+def load_gaming_revenue_series(conn: mysql.connector.MySQLConnection) -> dict[tuple[int, int], float]:
+    """Load GAMING_REVENUE_SERIES revenue for FY23Q1–FY26Q4.
+
+    Returns a dict keyed by (fiscal_year, fiscal_quarter) → revenue_m (float, millions USD).
+    Used by get_group_revenue to find the Gaming reconciliation target without any
+    hardcoded split ratio.
+    Aborts with sys.exit(1) if GAMING_REVENUE_SERIES has no rows in the synthetic
+    range — gen_synthetic_sales cannot reconcile Gaming rows without real targets.
+    """
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        SELECT fiscal_year, fiscal_quarter, revenue_m
+        FROM GAMING_REVENUE_SERIES
+        WHERE fiscal_year BETWEEN 2023 AND 2026
+        ORDER BY fiscal_year, fiscal_quarter
+        """
+    )
+    gaming_rev: dict[tuple[int, int], float] = {}
+    for fy, fq, rev_m in cursor.fetchall():
+        gaming_rev[(int(fy), int(fq))] = float(rev_m)
+    cursor.close()
+    if not gaming_rev:
+        logger.error(
+            "GAMING_REVENUE_SERIES has no rows for FY23–FY26. "
+            "Run load_segments_gaming.py before gen_synthetic_sales.py. "
+            "Cannot reconcile Gaming synthetic revenue without real targets."
+        )
+        sys.exit(1)
+    logger.info("Loaded %d GAMING_REVENUE_SERIES rows (FY23–FY26)", len(gaming_rev))
+    return gaming_rev
 
 
 def load_dim_dates(conn: mysql.connector.MySQLConnection) -> dict:
@@ -428,6 +461,7 @@ def generate_sales(
     financials: dict,
     dim_dates: dict,
     event_lifts: dict,
+    gaming_rev: dict[tuple[int, int], float],
     rng: np.random.Generator,
     chunk_size: int = CHUNK_SIZE,
 ) -> tuple[list[Path], dict]:
@@ -484,44 +518,53 @@ def generate_sales(
     all_periods = sorted(all_periods)
 
     def get_group_revenue(group: str, fy: int, fq: int) -> float:
-        """Return target revenue for a group and quarter.
+        """Return target revenue (millions USD) for a reconciliation group and quarter.
 
-        For 'gaming' and 'mpc': both are under MPC segment_id; we split by
-        consulting available financial rows.  Since QUARTERLY_FINANCIALS stores
-        total MPC revenue in one row (segment=MPC), we allocate Gaming vs MPC
-        non-Gaming as a fixed split: e.g. Gaming 70%, MPC non-Gaming 30%.
-        If a separate Gaming financial entry exists (segment_id differs), use it.
+        Gaming: sourced directly from GAMING_REVENUE_SERIES (real reported data).
+          Aborts loudly if a quarter has no Gaming row — no guessing allowed.
+        MPC non-Gaming: MPC reported total (QUARTERLY_FINANCIALS) minus Gaming
+          (GAMING_REVENUE_SERIES). Aborts if either component is missing.
+        PBP+IC: sum of PBP and IC rows from QUARTERLY_FINANCIALS.
         """
         if group == "gaming":
-            # Try dedicated Gaming entry first (if segments.csv loaded Gaming separately)
-            gaming_seg_id_candidates = [
-                sid for name, sid in segments.items()
-                if "gaming" in name.lower()
-            ]
-            for sid in gaming_seg_id_candidates:
-                v = financials.get((fy, fq, sid))
-                if v is not None:
-                    return v
-            # Fall back: 70% of MPC row
-            mpc_rev = financials.get((fy, fq, mpc_id))
-            return mpc_rev * 0.70 if mpc_rev is not None else 0.0
+            v = gaming_rev.get((fy, fq))
+            if v is None:
+                logger.error(
+                    "GAMING_REVENUE_SERIES has no row for FY%dQ%d. "
+                    "Cannot reconcile Gaming synthetic revenue. "
+                    "Ensure load_segments_gaming.py has been run.",
+                    fy, fq,
+                )
+                sys.exit(1)
+            return v
 
         elif group == "mpc":
-            gaming_seg_id_candidates = [
-                sid for name, sid in segments.items()
-                if "gaming" in name.lower()
-            ]
-            # If we used MPC total above, MPC-non-gaming = 30%
-            for sid in gaming_seg_id_candidates:
-                v = financials.get((fy, fq, sid))
-                if v is not None:
-                    # There's a dedicated Gaming row; get MPC total and subtract
-                    mpc_rev = financials.get((fy, fq, mpc_id))
-                    if mpc_rev is not None:
-                        return max(0.0, mpc_rev - v)
-                    return 0.0
-            mpc_rev = financials.get((fy, fq, mpc_id))
-            return mpc_rev * 0.30 if mpc_rev is not None else 0.0
+            mpc_total = financials.get((fy, fq, mpc_id))
+            gaming_target = gaming_rev.get((fy, fq))
+            if mpc_total is None:
+                logger.error(
+                    "QUARTERLY_FINANCIALS has no MPC row for FY%dQ%d. "
+                    "Run load_financials.py first.",
+                    fy, fq,
+                )
+                sys.exit(1)
+            if gaming_target is None:
+                logger.error(
+                    "GAMING_REVENUE_SERIES has no row for FY%dQ%d. "
+                    "Cannot derive MPC non-Gaming revenue. "
+                    "Ensure load_segments_gaming.py has been run.",
+                    fy, fq,
+                )
+                sys.exit(1)
+            derived = mpc_total - gaming_target
+            if derived < 0:
+                logger.error(
+                    "FY%dQ%d: Gaming revenue (%.2f M) exceeds MPC total (%.2f M). "
+                    "Check source data for inconsistency.",
+                    fy, fq, gaming_target, mpc_total,
+                )
+                sys.exit(1)
+            return derived
 
         else:  # pbp_ic
             total = 0.0
@@ -820,6 +863,7 @@ def run_reconciliation(
     financials: dict,
     dims: dict,
     all_periods: list[tuple[int, int]],
+    gaming_rev: dict[tuple[int, int], float],
 ) -> bool:
     """Compare generated totals against QUARTERLY_FINANCIALS targets.
 
@@ -833,30 +877,23 @@ def run_reconciliation(
     ic_id  = segments.get("Intelligent Cloud")
 
     def get_target(group: str, fy: int, fq: int) -> Optional[float]:
+        """Mirror of get_group_revenue for reconciliation reporting.
+
+        Returns None (SKIP) rather than aborting — reconciliation is a report,
+        not a gate at this point. Missing rows are flagged as SKIP in the table.
+        """
         if group == "gaming":
-            gaming_seg_id_candidates = [
-                sid for name, sid in segments.items()
-                if "gaming" in name.lower()
-            ]
-            for sid in gaming_seg_id_candidates:
-                v = financials.get((fy, fq, sid))
-                if v is not None:
-                    return v
-            v = financials.get((fy, fq, mpc_id))
-            return v * 0.70 if v is not None else None
+            return gaming_rev.get((fy, fq))  # None → SKIP row in report
+
         elif group == "mpc":
-            gaming_seg_id_candidates = [
-                sid for name, sid in segments.items()
-                if "gaming" in name.lower()
-            ]
-            for sid in gaming_seg_id_candidates:
-                v = financials.get((fy, fq, sid))
-                if v is not None:
-                    mpc_rev = financials.get((fy, fq, mpc_id))
-                    return max(0.0, mpc_rev - v) if mpc_rev is not None else 0.0
-            v = financials.get((fy, fq, mpc_id))
-            return v * 0.30 if v is not None else None
-        else:
+            mpc_total = financials.get((fy, fq, mpc_id))
+            gaming_target = gaming_rev.get((fy, fq))
+            if mpc_total is None or gaming_target is None:
+                return None  # SKIP
+            derived = mpc_total - gaming_target
+            return derived if derived >= 0 else None
+
+        else:  # pbp_ic
             total = 0.0
             found = False
             for seg_id in (pbp_id, ic_id):
@@ -1128,6 +1165,7 @@ def main() -> None:
 
         dims       = load_dimensions(conn)
         financials = load_quarterly_financials(conn)
+        gaming_rev = load_gaming_revenue_series(conn)
         dim_dates  = load_dim_dates(conn)
         event_lifts = load_event_lifts(conn)
 
@@ -1150,12 +1188,13 @@ def main() -> None:
             financials=financials,
             dim_dates=dim_dates,
             event_lifts=event_lifts,
+            gaming_rev=gaming_rev,
             rng=rng,
             chunk_size=CHUNK_SIZE,
         )
 
         # --- Reconciliation check ---
-        passed = run_reconciliation(recon, financials, dims, all_periods)
+        passed = run_reconciliation(recon, financials, dims, all_periods, gaming_rev)
         if not passed:
             logger.error(
                 "Reconciliation FAILED. Aborting — CSV files have been written "

@@ -1,21 +1,43 @@
 """
-load_financials.py — Load quarterly financials from msft_facts.json into QUARTERLY_FINANCIALS.
+load_financials.py — Load PBP/IC/MPC quarterly financials into QUARTERLY_FINANCIALS.
 
-Source:  data/raw/msft_facts.json  (produced by fetch_edgar.py)
+Sources:
+  data/raw/segments_reported.csv  — PBP/IC/MPC segment revenue + operating income
+                                    transcribed from Microsoft earnings releases
+  data/raw/msft_facts.json        — EDGAR company-wide totals (validation ONLY;
+                                    never inserted as segment rows)
+
 Target:  QUARTERLY_FINANCIALS table in margin_db
 
-Metrics loaded: revenue, cogs, operating_income (all three required per period)
-Annual and TTM frames are already excluded by fetch_edgar.py; this script
-operates on the Q1–Q4 records it produces.
+Columns in segments_reported.csv:
+  fiscal_year, fiscal_quarter, segment_name, revenue_m, operating_income_m,
+  source_url, basis
 
-Idempotency: INSERT ... ON DUPLICATE KEY UPDATE so re-runs are safe.
+  basis values:
+    'as_reported_pre_recast' — filed before the August 2024 segment recast
+    'recast_2024-08'         — restated on the August 2024 recast structure
+    'as_reported'            — post-recast filings going forward
 
-Validation: fields are checked before insert; rejected rows are logged with
-  identifier (fiscal_year/fiscal_quarter/metric), field name,
-  expected type/range, and actual value.
+  revenue_m / operating_income_m are already in millions USD (insert as-is).
+  COGS is not reported at segment level; the cogs column is left NULL.
+  basis and source_url are stored in QUARTERLY_FINANCIALS (added by migration 08).
 
-Segment: loads with segment_id for "Gaming" (default), or per-segment if
-  data/raw/segments.csv exists.
+  IMPORTANT: FY23 rows (as_reported_pre_recast) and FY24 rows (recast_2024-08)
+  are not directly comparable. Any query computing period-over-period changes
+  must filter on basis or acknowledge the comparability caveat.
+
+Idempotency: INSERT ... ON DUPLICATE KEY UPDATE, keyed on
+  UNIQUE KEY uq_qf_period (fiscal_year, fiscal_quarter, segment_id)
+  added by migration 08 section 10c.
+
+Post-load validator (Requirement 4.1):
+  For each (fiscal_year, fiscal_quarter) that has all three segments loaded,
+  abs(PBP + IC + MPC - EDGAR_company_wide) / EDGAR_company_wide must be <= 0.5%.
+  Quarters that fail are logged as warnings; script does NOT abort (earnings
+  releases round to millions, so small gaps are expected).
+
+Field-level validation: rejected rows logged with identifier, field, expected,
+actual. Per-row rejection; does not batch-abort.
 
 Requirements: 4.1, 4.7, 21.1, 21.2
 """
@@ -36,8 +58,8 @@ from dotenv import load_dotenv
 # ---------------------------------------------------------------------------
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-FACTS_PATH = PROJECT_ROOT / "data" / "raw" / "msft_facts.json"
-SEGMENTS_CSV_PATH = PROJECT_ROOT / "data" / "raw" / "segments.csv"
+SEGMENTS_REPORTED_PATH = PROJECT_ROOT / "data" / "raw" / "segments_reported.csv"
+FACTS_PATH             = PROJECT_ROOT / "data" / "raw" / "msft_facts.json"
 
 # ---------------------------------------------------------------------------
 # Logging
@@ -52,83 +74,34 @@ logging.Formatter.converter = lambda *args: datetime.now(timezone.utc).timetuple
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
+# Constants
+# ---------------------------------------------------------------------------
+
+VALID_SEGMENT_NAMES = frozenset({
+    "Productivity and Business Processes",
+    "Intelligent Cloud",
+    "More Personal Computing",
+})
+
+# Three valid basis values matching MARGIN_DB.md §8.3 and §12.1
+VALID_BASIS_VALUES = frozenset({
+    "as_reported_pre_recast",  # FY23 filings, filed before August 2024 segment recast
+    "recast_2024-08",          # FY24 rows restated on the August 2024 recast structure
+    "as_reported",             # post-recast filings going forward
+})
+
+FY_MIN, FY_MAX = 2000, 2100
+FQ_VALID = {1, 2, 3, 4}
+
+# Tolerance for abs(PBP+IC+MPC - EDGAR_total) / EDGAR_total (0.5%)
+EDGAR_TOLERANCE = 0.005
+
+
+# ---------------------------------------------------------------------------
 # Validation helpers
 # ---------------------------------------------------------------------------
 
-VALID_METRICS = {"revenue", "cogs", "operating_income"}
-
-# QUARTERLY_FINANCIALS stores amounts as DECIMAL(15,2) — values from SEC EDGAR
-# are in dollars (integer cents at most).  We accept any real number.
-# Fiscal year: Microsoft's fiscal year ends June 30; data covers FY2012–FY2025 range.
-FY_MIN = 2000
-FY_MAX = 2100
-FQ_VALID = {1, 2, 3, 4}
-
-
-def _validate_record(record: dict) -> list[dict]:
-    """Validate a single flat record dict.
-
-    Returns a list of rejection dicts (empty if valid):
-      {identifier, field, expected, actual}
-    """
-    fy = record.get("fiscal_year")
-    fq = record.get("fiscal_quarter")
-    metric = record.get("metric")
-    identifier = f"{fy}/{fq}/{metric}"
-    rejections = []
-
-    # fiscal_year
-    if not isinstance(fy, int) or not (FY_MIN <= fy <= FY_MAX):
-        rejections.append({
-            "identifier": identifier,
-            "field": "fiscal_year",
-            "expected": f"int in [{FY_MIN}, {FY_MAX}]",
-            "actual": repr(fy),
-        })
-
-    # fiscal_quarter
-    if not isinstance(fq, int) or fq not in FQ_VALID:
-        rejections.append({
-            "identifier": identifier,
-            "field": "fiscal_quarter",
-            "expected": "int in {1, 2, 3, 4}",
-            "actual": repr(fq),
-        })
-
-    # metric
-    if metric not in VALID_METRICS:
-        rejections.append({
-            "identifier": identifier,
-            "field": "metric",
-            "expected": f"one of {sorted(VALID_METRICS)}",
-            "actual": repr(metric),
-        })
-
-    # value — must be a real number (int or float), not None
-    value = record.get("value")
-    if not isinstance(value, (int, float)) or value is None:
-        rejections.append({
-            "identifier": identifier,
-            "field": "value",
-            "expected": "numeric (int or float)",
-            "actual": repr(value),
-        })
-
-    # filed_date — must be a non-empty ISO date string (YYYY-MM-DD)
-    filed_date = record.get("filed_date", "")
-    if not isinstance(filed_date, str) or not _is_iso_date(filed_date):
-        rejections.append({
-            "identifier": identifier,
-            "field": "filed_date",
-            "expected": "ISO date string YYYY-MM-DD",
-            "actual": repr(filed_date),
-        })
-
-    return rejections
-
-
 def _is_iso_date(value: str) -> bool:
-    """Return True if value matches YYYY-MM-DD and is a valid calendar date."""
     if not value or len(value) != 10:
         return False
     try:
@@ -138,74 +111,170 @@ def _is_iso_date(value: str) -> bool:
         return False
 
 
-# ---------------------------------------------------------------------------
-# Data loading helpers
-# ---------------------------------------------------------------------------
+def validate_segment_row(row_num: int, row: dict) -> tuple[dict | None, list[dict]]:
+    """Validate one row from segments_reported.csv.
 
-def load_facts(path: Path) -> list[dict]:
-    """Read msft_facts.json and return list of records."""
-    if not path.exists():
-        logger.error("Facts file not found: %s", path)
-        sys.exit(1)
-    with open(path, encoding="utf-8") as f:
-        records = json.load(f)
-    if not isinstance(records, list):
-        logger.error("Expected a JSON array in %s", path)
-        sys.exit(1)
-    logger.info("Loaded %d records from %s", len(records), path)
-    return records
-
-
-def group_by_period(records: list[dict]) -> dict[tuple, dict]:
-    """Group validated records by (fiscal_year, fiscal_quarter).
-
-    Within a group, keep latest filed_date per metric (deduplication of
-    restatements — Requirement 4.7).
-
-    Returns {(fy, fq): {"revenue": record, "cogs": record, "operating_income": record}}
-    where each inner record is the one with the latest filed_date.
+    Returns (validated_dict, rejection_list).
+    validated_dict is None if any required field fails.
     """
-    # First pass: group by (fy, fq, metric) keeping latest filed_date
-    best: dict[tuple, dict] = {}  # (fy, fq, metric) → record
+    rejections: list[dict] = []
+    identifier = f"segments_reported/row_{row_num}"
 
+    # fiscal_year
+    try:
+        fiscal_year = int(row["fiscal_year"])
+        if not (FY_MIN <= fiscal_year <= FY_MAX):
+            raise ValueError
+    except (ValueError, KeyError, TypeError):
+        rejections.append({
+            "identifier": identifier,
+            "field": "fiscal_year",
+            "expected": f"int in [{FY_MIN}, {FY_MAX}]",
+            "actual": repr(row.get("fiscal_year")),
+        })
+        fiscal_year = None
+
+    # fiscal_quarter
+    try:
+        fiscal_quarter = int(row["fiscal_quarter"])
+        if fiscal_quarter not in FQ_VALID:
+            raise ValueError
+    except (ValueError, KeyError, TypeError):
+        rejections.append({
+            "identifier": identifier,
+            "field": "fiscal_quarter",
+            "expected": "int in {1, 2, 3, 4}",
+            "actual": repr(row.get("fiscal_quarter")),
+        })
+        fiscal_quarter = None
+
+    # segment_name — must be one of PBP, IC, MPC
+    segment_name = row.get("segment_name", "").strip()
+    if segment_name not in VALID_SEGMENT_NAMES:
+        rejections.append({
+            "identifier": identifier,
+            "field": "segment_name",
+            "expected": f"one of {sorted(VALID_SEGMENT_NAMES)}",
+            "actual": repr(segment_name),
+        })
+        segment_name = None
+
+    # revenue_m — required, non-negative
+    try:
+        revenue_m = float(row["revenue_m"])
+        if revenue_m < 0:
+            raise ValueError("negative")
+    except (ValueError, KeyError, TypeError):
+        rejections.append({
+            "identifier": identifier,
+            "field": "revenue_m",
+            "expected": "non-negative float (millions USD)",
+            "actual": repr(row.get("revenue_m")),
+        })
+        revenue_m = None
+
+    # operating_income_m — optional (blank → None)
+    oi_raw = row.get("operating_income_m", "").strip()
+    if oi_raw == "":
+        operating_income_m = None
+    else:
+        try:
+            operating_income_m = float(oi_raw)
+        except (ValueError, TypeError):
+            rejections.append({
+                "identifier": identifier,
+                "field": "operating_income_m",
+                "expected": "float (millions USD) or blank for NULL",
+                "actual": repr(oi_raw),
+            })
+            operating_income_m = None
+
+    # source_url — required, non-empty
+    source_url = row.get("source_url", "").strip()
+    if not source_url:
+        rejections.append({
+            "identifier": identifier,
+            "field": "source_url",
+            "expected": "non-empty URL string",
+            "actual": repr(row.get("source_url")),
+        })
+
+    # basis — required, one of the three known values
+    basis = row.get("basis", "").strip()
+    if basis not in VALID_BASIS_VALUES:
+        rejections.append({
+            "identifier": identifier,
+            "field": "basis",
+            "expected": f"one of {sorted(VALID_BASIS_VALUES)}",
+            "actual": repr(basis),
+        })
+
+    if rejections:
+        return None, rejections
+
+    return {
+        "fiscal_year":        fiscal_year,
+        "fiscal_quarter":     fiscal_quarter,
+        "segment_name":       segment_name,
+        "revenue_m":          revenue_m,
+        "operating_income_m": operating_income_m,
+        "source_url":         source_url,
+        "basis":              basis,
+    }, []
+
+
+# ---------------------------------------------------------------------------
+# EDGAR company-wide totals (validator only — never inserted as segment rows)
+# ---------------------------------------------------------------------------
+
+def load_edgar_company_totals(facts_path: Path) -> dict[tuple[int, int], float]:
+    """Read msft_facts.json and return company-wide revenue in millions USD.
+
+    Returns {(fiscal_year, fiscal_quarter): revenue_millions}.
+    Only quarterly frames included; latest filed_date per period for restatements.
+    Returns empty dict if file is absent (validator skipped with a warning).
+    """
+    if not facts_path.exists():
+        logger.warning(
+            "msft_facts.json not found at %s — EDGAR validator will be skipped.",
+            facts_path,
+        )
+        return {}
+
+    with open(facts_path, encoding="utf-8") as f:
+        records = json.load(f)
+
+    if not isinstance(records, list):
+        logger.warning("msft_facts.json is not a JSON array — EDGAR validator skipped.")
+        return {}
+
+    # Keep only 'revenue' metric, quarterly frames, latest filed_date per period
+    best: dict[tuple[int, int], dict] = {}
     for rec in records:
+        if rec.get("metric") != "revenue":
+            continue
         fy = rec.get("fiscal_year")
         fq = rec.get("fiscal_quarter")
-        metric = rec.get("metric")
-        if not (isinstance(fy, int) and isinstance(fq, int) and metric in VALID_METRICS):
+        if not (isinstance(fy, int) and isinstance(fq, int) and fq in FQ_VALID):
             continue
-        key = (fy, fq, metric)
+        key = (fy, fq)
         filed = rec.get("filed_date", "")
         existing = best.get(key)
         if existing is None or filed > existing.get("filed_date", ""):
             best[key] = rec
 
-    # Second pass: group by period
-    periods: dict[tuple, dict] = {}
-    for (fy, fq, metric), rec in best.items():
-        period_key = (fy, fq)
-        if period_key not in periods:
-            periods[period_key] = {}
-        periods[period_key][metric] = rec
+    totals: dict[tuple[int, int], float] = {}
+    for (fy, fq), rec in best.items():
+        raw_value = rec.get("value")
+        if isinstance(raw_value, (int, float)):
+            # EDGAR values are in raw USD; divide by 1,000,000 for millions
+            totals[(fy, fq)] = float(raw_value) / 1_000_000
 
-    return periods
-
-
-def load_segments_csv(path: Path) -> list[dict]:
-    """Load segments.csv if available.
-
-    Expected columns: fiscal_year, fiscal_quarter, segment_name, revenue, cogs, operating_income, filed_date
-    Returns list of dicts, or empty list if file absent.
-    """
-    if not path.exists():
-        return []
-    rows = []
-    with open(path, newline="", encoding="utf-8") as f:
-        reader = csv.DictReader(f)
-        for row in reader:
-            rows.append(row)
-    logger.info("Loaded %d rows from %s", len(rows), path)
-    return rows
+    logger.info(
+        "EDGAR company-wide revenue: loaded %d quarterly periods for validation.",
+        len(totals),
+    )
+    return totals
 
 
 # ---------------------------------------------------------------------------
@@ -213,7 +282,6 @@ def load_segments_csv(path: Path) -> list[dict]:
 # ---------------------------------------------------------------------------
 
 def get_connection(env: dict) -> mysql.connector.MySQLConnection:
-    """Open a mysql-connector-python connection using credentials from env."""
     return mysql.connector.connect(
         host=env["DB_HOST"],
         port=int(env.get("DB_PORT", 3306)),
@@ -226,33 +294,32 @@ def get_connection(env: dict) -> mysql.connector.MySQLConnection:
 
 
 def get_segment_id(cursor, segment_name: str) -> int | None:
-    """Look up segment_id by name. Returns None if not found."""
     cursor.execute(
-        "SELECT segment_id FROM COMPANY_SEGMENT WHERE name = %s",
-        (segment_name,),
+        "SELECT segment_id FROM COMPANY_SEGMENT WHERE name = %s", (segment_name,)
     )
     row = cursor.fetchone()
     return row[0] if row else None
 
 
+# cogs stays NULL — not reported at segment level in segments_reported.csv.
+# filed_date stays NULL — source_url records the earnings release instead.
+# ON DUPLICATE KEY UPDATE is effective because migration 08 section 10c adds
+# UNIQUE KEY uq_qf_period (fiscal_year, fiscal_quarter, segment_id).
 INSERT_SQL = """
 INSERT INTO QUARTERLY_FINANCIALS
-    (fiscal_year, fiscal_quarter, segment_id, revenue, cogs, operating_income, filed_date)
+    (fiscal_year, fiscal_quarter, segment_id,
+     revenue, cogs, operating_income,
+     basis, source_url)
 VALUES
-    (%s, %s, %s, %s, %s, %s, %s)
+    (%s, %s, %s,
+     %s, NULL, %s,
+     %s, %s)
 ON DUPLICATE KEY UPDATE
     revenue          = VALUES(revenue),
-    cogs             = VALUES(cogs),
     operating_income = VALUES(operating_income),
-    filed_date       = VALUES(filed_date)
+    basis            = VALUES(basis),
+    source_url       = VALUES(source_url)
 """
-
-# QUARTERLY_FINANCIALS has no explicit UNIQUE key defined in the task description,
-# so we rely on the PK (qf_id AUTO_INCREMENT).  For idempotency we use a
-# conditional update approach: first try to find an existing row and update it,
-# otherwise insert.  If the DDL defines a UNIQUE KEY on (fiscal_year, fiscal_quarter,
-# segment_id) the ON DUPLICATE KEY UPDATE above handles it automatically.
-# We use that form throughout since the design calls for it.
 
 
 def upsert_row(
@@ -260,259 +327,180 @@ def upsert_row(
     fiscal_year: int,
     fiscal_quarter: int,
     segment_id: int,
-    revenue: float,
-    cogs: float,
-    operating_income: float,
-    filed_date: str,
+    revenue_m: float,
+    operating_income_m: float | None,
+    basis: str,
+    source_url: str,
 ) -> int:
-    """Execute the upsert and return rows_affected (1=insert, 2=update, 0=no-op)."""
     cursor.execute(
         INSERT_SQL,
-        (fiscal_year, fiscal_quarter, segment_id, revenue, cogs, operating_income, filed_date),
+        (
+            fiscal_year, fiscal_quarter, segment_id,
+            revenue_m, operating_income_m,
+            basis, source_url,
+        ),
     )
     return cursor.rowcount
+
+
+# ---------------------------------------------------------------------------
+# Post-load EDGAR validator
+# ---------------------------------------------------------------------------
+
+def run_edgar_validator(
+    cursor,
+    edgar_totals: dict[tuple[int, int], float],
+) -> None:
+    """Compare PBP+IC+MPC sum against EDGAR company-wide revenue per quarter.
+
+    Uses abs(sum - EDGAR_total) / EDGAR_total — symmetric, catches both
+    under-count and over-count. Logs a WARNING for any quarter exceeding
+    EDGAR_TOLERANCE (0.5%). Does NOT abort — earnings releases round to
+    millions, so small gaps are expected.
+    """
+    if not edgar_totals:
+        logger.info("EDGAR validator skipped (no msft_facts.json data available).")
+        return
+
+    # Sum what was just loaded into QUARTERLY_FINANCIALS, per (fy, fq)
+    cursor.execute(
+        """
+        SELECT fiscal_year, fiscal_quarter, SUM(revenue) AS total_rev
+        FROM QUARTERLY_FINANCIALS
+        GROUP BY fiscal_year, fiscal_quarter
+        """
+    )
+    db_totals: dict[tuple[int, int], float] = {
+        (int(fy), int(fq)): float(rev)
+        for fy, fq, rev in cursor.fetchall()
+    }
+
+    passed = 0
+    warned = 0
+    for (fy, fq), edgar_rev in sorted(edgar_totals.items()):
+        db_rev = db_totals.get((fy, fq))
+        if db_rev is None:
+            # Period not yet loaded (outside the transcribed range); skip
+            continue
+        if edgar_rev == 0:
+            continue
+        # Symmetric: catches both under-count and over-count
+        delta_pct = abs(db_rev - edgar_rev) / edgar_rev
+        if delta_pct > EDGAR_TOLERANCE:
+            logger.warning(
+                "EDGAR validator WARN FY%dQ%d: "
+                "PBP+IC+MPC sum=%.2f M  EDGAR total=%.2f M  "
+                "abs_delta=%.3f%%  (threshold %.1f%%)",
+                fy, fq, db_rev, edgar_rev,
+                delta_pct * 100, EDGAR_TOLERANCE * 100,
+            )
+            warned += 1
+        else:
+            passed += 1
+
+    logger.info(
+        "EDGAR validator complete: %d quarter(s) within %.1f%%, "
+        "%d quarter(s) warned.",
+        passed, EDGAR_TOLERANCE * 100, warned,
+    )
 
 
 # ---------------------------------------------------------------------------
 # Core load logic
 # ---------------------------------------------------------------------------
 
-def load_from_facts(
+def load_from_segments_reported(
     cursor,
-    periods: dict[tuple, dict],
-    default_segment_id: int,
-) -> tuple[int, list[dict]]:
-    """Load periods grouped from msft_facts.json.
-
-    Returns (rows_affected, rejected_rows).
-    """
-    rows_affected = 0
-    rejected_rows: list[dict] = []
-    required_metrics = {"revenue", "cogs", "operating_income"}
-
-    for (fy, fq), metric_map in sorted(periods.items()):
-        # Skip period if any required metric is missing (Requirement 4.7)
-        missing = required_metrics - set(metric_map.keys())
-        if missing:
-            logger.warning(
-                "Period %s/Q%s: skipping — missing metrics: %s", fy, fq, sorted(missing)
-            )
-            continue
-
-        # Validate each metric record before inserting
-        period_rejected = False
-        for metric, rec in metric_map.items():
-            validation_errors = _validate_record(rec)
-            if validation_errors:
-                for err in validation_errors:
-                    logger.warning(
-                        "REJECTED row %s | field=%s | expected=%s | actual=%s",
-                        err["identifier"],
-                        err["field"],
-                        err["expected"],
-                        err["actual"],
-                    )
-                    rejected_rows.append(err)
-                period_rejected = True
-
-        if period_rejected:
-            continue
-
-        # Grab values
-        revenue_rec = metric_map["revenue"]
-        cogs_rec = metric_map["cogs"]
-        oi_rec = metric_map["operating_income"]
-
-        # Use the latest filed_date across the three metrics for the row
-        filed_date = max(
-            revenue_rec.get("filed_date", ""),
-            cogs_rec.get("filed_date", ""),
-            oi_rec.get("filed_date", ""),
-        )
-        if not _is_iso_date(filed_date):
-            filed_date = revenue_rec.get("filed_date", "")
-
-        try:
-            affected = upsert_row(
-                cursor,
-                fiscal_year=fy,
-                fiscal_quarter=fq,
-                segment_id=default_segment_id,
-                revenue=float(revenue_rec["value"]),
-                cogs=float(cogs_rec["value"]),
-                operating_income=float(oi_rec["value"]),
-                filed_date=filed_date,
-            )
-            rows_affected += affected
-        except mysql.connector.Error as exc:
-            logger.error("DB error inserting %s/Q%s: %s", fy, fq, exc)
-            rejected_rows.append({
-                "identifier": f"{fy}/{fq}/all",
-                "field": "(db insert)",
-                "expected": "successful INSERT ... ON DUPLICATE KEY UPDATE",
-                "actual": str(exc),
-            })
-
-    return rows_affected, rejected_rows
-
-
-def load_from_segments_csv(
-    cursor,
-    segment_rows: list[dict],
+    csv_path: Path,
     segment_id_cache: dict[str, int | None],
 ) -> tuple[int, list[dict]]:
-    """Load per-segment rows from segments.csv.
-
-    Expected CSV columns:
-      fiscal_year, fiscal_quarter, segment_name,
-      revenue, cogs, operating_income, filed_date
+    """Read segments_reported.csv and upsert PBP/IC/MPC rows.
 
     Returns (rows_affected, rejected_rows).
     """
     rows_affected = 0
     rejected_rows: list[dict] = []
+
     required_cols = {
         "fiscal_year", "fiscal_quarter", "segment_name",
-        "revenue", "cogs", "operating_income", "filed_date",
+        "revenue_m", "operating_income_m", "source_url", "basis",
     }
 
-    for i, row in enumerate(segment_rows):
-        identifier = f"segments_csv/row_{i + 1}"
-
-        # Check required columns
-        missing_cols = required_cols - set(row.keys())
+    with open(csv_path, newline="", encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        if reader.fieldnames is None:
+            logger.error("segments_reported.csv appears empty or has no header.")
+            sys.exit(1)
+        # Strip BOM / surrounding whitespace from header names
+        reader.fieldnames = [h.strip().lstrip("\ufeff") for h in reader.fieldnames]
+        missing_cols = required_cols - set(reader.fieldnames)
         if missing_cols:
-            rejected_rows.append({
-                "identifier": identifier,
-                "field": "columns",
-                "expected": f"CSV must have columns: {sorted(required_cols)}",
-                "actual": f"missing: {sorted(missing_cols)}",
-            })
-            logger.warning("REJECTED %s: missing CSV columns %s", identifier, sorted(missing_cols))
-            continue
+            logger.error(
+                "segments_reported.csv missing required columns: %s (found: %s)",
+                sorted(missing_cols),
+                reader.fieldnames,
+            )
+            sys.exit(1)
 
-        # Parse and validate fields
-        errors = []
+        for row_num, row in enumerate(reader, start=2):
+            validated, rejections = validate_segment_row(row_num, row)
 
-        try:
-            fiscal_year = int(row["fiscal_year"])
-        except (ValueError, TypeError):
-            errors.append({
-                "identifier": identifier,
-                "field": "fiscal_year",
-                "expected": f"int in [{FY_MIN}, {FY_MAX}]",
-                "actual": repr(row.get("fiscal_year")),
-            })
-            fiscal_year = None
+            if rejections:
+                for err in rejections:
+                    logger.warning(
+                        "REJECTED row %s | field=%s | expected=%s | actual=%s",
+                        err["identifier"], err["field"],
+                        err["expected"], err["actual"],
+                    )
+                    rejected_rows.append(err)
+                continue
 
-        if fiscal_year is not None and not (FY_MIN <= fiscal_year <= FY_MAX):
-            errors.append({
-                "identifier": identifier,
-                "field": "fiscal_year",
-                "expected": f"int in [{FY_MIN}, {FY_MAX}]",
-                "actual": repr(fiscal_year),
-            })
-            fiscal_year = None
-
-        try:
-            fiscal_quarter = int(row["fiscal_quarter"])
-        except (ValueError, TypeError):
-            errors.append({
-                "identifier": identifier,
-                "field": "fiscal_quarter",
-                "expected": "int in {1, 2, 3, 4}",
-                "actual": repr(row.get("fiscal_quarter")),
-            })
-            fiscal_quarter = None
-
-        if fiscal_quarter is not None and fiscal_quarter not in FQ_VALID:
-            errors.append({
-                "identifier": identifier,
-                "field": "fiscal_quarter",
-                "expected": "int in {1, 2, 3, 4}",
-                "actual": repr(fiscal_quarter),
-            })
-            fiscal_quarter = None
-
-        segment_name = row.get("segment_name", "").strip()
-        if not segment_name:
-            errors.append({
-                "identifier": identifier,
-                "field": "segment_name",
-                "expected": "non-empty string",
-                "actual": repr(segment_name),
-            })
-
-        numeric_fields = {}
-        for field in ("revenue", "cogs", "operating_income"):
-            try:
-                numeric_fields[field] = float(row[field])
-            except (ValueError, TypeError):
-                errors.append({
-                    "identifier": identifier,
-                    "field": field,
-                    "expected": "numeric (int or float)",
-                    "actual": repr(row.get(field)),
-                })
-
-        filed_date = row.get("filed_date", "").strip()
-        if not _is_iso_date(filed_date):
-            errors.append({
-                "identifier": identifier,
-                "field": "filed_date",
-                "expected": "ISO date string YYYY-MM-DD",
-                "actual": repr(filed_date),
-            })
-
-        if errors:
-            for err in errors:
+            seg_name = validated["segment_name"]
+            seg_id = segment_id_cache.get(seg_name)
+            if seg_id is None:
                 logger.warning(
-                    "REJECTED row %s | field=%s | expected=%s | actual=%s",
-                    err["identifier"],
-                    err["field"],
-                    err["expected"],
-                    err["actual"],
+                    "REJECTED row %d: segment '%s' not found in COMPANY_SEGMENT — "
+                    "run 06_seed_reference.sql or 09_fix_segments.sql first.",
+                    row_num, seg_name,
                 )
-                rejected_rows.append(err)
-            continue
+                rejected_rows.append({
+                    "identifier": f"segments_reported/row_{row_num}",
+                    "field": "segment_name",
+                    "expected": "known segment in COMPANY_SEGMENT",
+                    "actual": repr(seg_name),
+                })
+                continue
 
-        # Resolve segment_id
-        if segment_name not in segment_id_cache:
-            # Will be populated by caller; fetch inline if needed
-            pass
-        seg_id = segment_id_cache.get(segment_name)
-        if seg_id is None:
-            rejected_rows.append({
-                "identifier": identifier,
-                "field": "segment_name",
-                "expected": "known segment in COMPANY_SEGMENT",
-                "actual": repr(segment_name),
-            })
-            logger.warning(
-                "REJECTED %s: segment '%s' not found in COMPANY_SEGMENT", identifier, segment_name
+            logger.debug(
+                "Loading FY%dQ%d  %-42s  revenue_m=%.2f  basis=%s",
+                validated["fiscal_year"], validated["fiscal_quarter"],
+                seg_name, validated["revenue_m"], validated["basis"],
             )
-            continue
 
-        try:
-            affected = upsert_row(
-                cursor,
-                fiscal_year=fiscal_year,
-                fiscal_quarter=fiscal_quarter,
-                segment_id=seg_id,
-                revenue=numeric_fields["revenue"],
-                cogs=numeric_fields["cogs"],
-                operating_income=numeric_fields["operating_income"],
-                filed_date=filed_date,
-            )
-            rows_affected += affected
-        except mysql.connector.Error as exc:
-            logger.error("DB error inserting %s: %s", identifier, exc)
-            rejected_rows.append({
-                "identifier": identifier,
-                "field": "(db insert)",
-                "expected": "successful INSERT ... ON DUPLICATE KEY UPDATE",
-                "actual": str(exc),
-            })
+            try:
+                affected = upsert_row(
+                    cursor,
+                    validated["fiscal_year"],
+                    validated["fiscal_quarter"],
+                    seg_id,
+                    validated["revenue_m"],
+                    validated["operating_income_m"],
+                    validated["basis"],
+                    validated["source_url"],
+                )
+                rows_affected += affected
+            except mysql.connector.Error as exc:
+                logger.error(
+                    "DB error inserting row %d (%s FY%dQ%d): %s",
+                    row_num, seg_name,
+                    validated["fiscal_year"], validated["fiscal_quarter"], exc,
+                )
+                rejected_rows.append({
+                    "identifier": f"segments_reported/row_{row_num}",
+                    "field": "(db insert)",
+                    "expected": "successful upsert",
+                    "actual": str(exc),
+                })
 
     return rows_affected, rejected_rows
 
@@ -525,7 +513,7 @@ def main() -> None:
     load_dotenv()
 
     required_env = ["DB_HOST", "DB_NAME", "ADMIN_USER", "ADMIN_PASSWORD"]
-    env = {}
+    env: dict = {}
     missing_env = []
     for key in required_env:
         val = os.environ.get(key, "").strip()
@@ -538,12 +526,18 @@ def main() -> None:
         logger.error("Missing required environment variables: %s", missing_env)
         sys.exit(1)
 
-    # --- Load source data ---
-    records = load_facts(FACTS_PATH)
-    periods = group_by_period(records)
-    logger.info("Grouped into %d distinct (fiscal_year, fiscal_quarter) periods", len(periods))
+    if not SEGMENTS_REPORTED_PATH.exists():
+        logger.error(
+            "segments_reported.csv not found at %s. "
+            "Please transcribe PBP/IC/MPC data from Microsoft earnings releases "
+            "(10-Q/10-K Segment Results section).",
+            SEGMENTS_REPORTED_PATH,
+        )
+        sys.exit(1)
 
-    # --- Connect ---
+    # Load EDGAR totals for post-load validation (missing file → validator skipped)
+    edgar_totals = load_edgar_company_totals(FACTS_PATH)
+
     try:
         conn = get_connection(env)
     except mysql.connector.Error as exc:
@@ -556,47 +550,33 @@ def main() -> None:
     try:
         cursor = conn.cursor()
 
-        # Look up default segment_id for "Gaming"
-        gaming_segment_id = get_segment_id(cursor, "Gaming")
-        if gaming_segment_id is None:
-            logger.error(
-                "Segment 'Gaming' not found in COMPANY_SEGMENT. "
-                "Run 06_seed_reference.sql before this script."
-            )
-            conn.close()
-            sys.exit(1)
-        logger.info("Gaming segment_id = %d", gaming_segment_id)
+        # Build segment_id cache for PBP, IC, MPC only — no Gaming lookup
+        segment_id_cache: dict[str, int | None] = {}
+        for seg_name in VALID_SEGMENT_NAMES:
+            seg_id = get_segment_id(cursor, seg_name)
+            segment_id_cache[seg_name] = seg_id
+            if seg_id is None:
+                logger.warning(
+                    "Segment '%s' not found in COMPANY_SEGMENT — rows for this "
+                    "segment will be rejected. Run 06_seed_reference.sql (or "
+                    "09_fix_segments.sql for older schemas) first.",
+                    seg_name,
+                )
 
-        # --- Load from msft_facts.json ---
-        if not SEGMENTS_CSV_PATH.exists():
-            # Default path: load all periods with Gaming segment
-            logger.info("segments.csv not found — loading all periods with segment 'Gaming'")
-            affected, rejected = load_from_facts(cursor, periods, gaming_segment_id)
-            total_affected += affected
-            all_rejected.extend(rejected)
-        else:
-            # segments.csv present: load per-segment data from it
-            logger.info("segments.csv found — loading per-segment data from %s", SEGMENTS_CSV_PATH)
-            segment_rows = load_segments_csv(SEGMENTS_CSV_PATH)
-
-            # Build segment_id cache for all segment names in the CSV
-            segment_names = {row.get("segment_name", "").strip() for row in segment_rows}
-            segment_id_cache: dict[str, int | None] = {}
-            for name in segment_names:
-                if name:
-                    seg_id = get_segment_id(cursor, name)
-                    segment_id_cache[name] = seg_id
-                    if seg_id is None:
-                        logger.warning("Segment '%s' not found in COMPANY_SEGMENT", name)
-
-            affected, rejected = load_from_segments_csv(cursor, segment_rows, segment_id_cache)
-            total_affected += affected
-            all_rejected.extend(rejected)
+        logger.info("Loading %s ...", SEGMENTS_REPORTED_PATH)
+        affected, rejected = load_from_segments_reported(
+            cursor, SEGMENTS_REPORTED_PATH, segment_id_cache
+        )
+        total_affected += affected
+        all_rejected.extend(rejected)
 
         conn.commit()
 
+        # Post-load EDGAR validator (symmetric abs-delta check)
+        run_edgar_validator(cursor, edgar_totals)
+
     except Exception as exc:
-        logger.error("Unexpected error during load: %s", exc)
+        logger.error("Unexpected error: %s", exc, exc_info=True)
         conn.rollback()
         conn.close()
         raise
@@ -607,9 +587,7 @@ def main() -> None:
             pass
         conn.close()
 
-    # --- Summary ---
     print(f"\nRows inserted/updated: {total_affected}")
-
     if all_rejected:
         print(f"\nRejected rows ({len(all_rejected)}):")
         for rej in all_rejected:

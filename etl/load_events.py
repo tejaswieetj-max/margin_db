@@ -265,17 +265,16 @@ def get_connection(env: dict) -> mysql.connector.MySQLConnection:
     )
 
 
-# INSERT IGNORE: skip silently if a UNIQUE constraint is ever added.
-# BUSINESS_EVENT table columns: event_id (PK AUTO_INCREMENT), event_type,
-# name, start_date, end_date, expected_lift, source_url.
-# Note: The DDL does NOT include steam_app_id — that column lives only in CSV
-# for cross-reference; it is NOT loaded into BUSINESS_EVENT per the schema.
 INSERT_SQL = """
 INSERT IGNORE INTO BUSINESS_EVENT
-    (event_type, name, start_date, end_date, expected_lift, source_url)
+    (event_type, name, start_date, end_date, expected_lift, steam_app_id, source_url)
 VALUES
-    (%s, %s, %s, %s, %s, %s)
+    (%s, %s, %s, %s, %s, %s, %s)
 """
+# steam_app_id is stored in BUSINESS_EVENT (column added by migration 08, section 3).
+# NULL for non-Steam events (Black Friday, price changes, etc.).
+# compute_event_windows.py queries WHERE steam_app_id IS NOT NULL to find
+# qualifying game_launch events; it cannot do so if we discard this value here.
 
 BATCH_SIZE = 200  # commit every N successfully validated rows
 
@@ -292,6 +291,7 @@ def insert_batch(cursor, batch: list[dict]) -> int:
             r["start_date"],
             r["end_date"],
             r["expected_lift"],
+            r["steam_app_id"],
             r["source_url"],
         )
         for r in batch

@@ -145,21 +145,32 @@ log "Starting ${CURRENT_STEP} ..."
 log "Completed ${CURRENT_STEP}."
 
 # ---------------------------------------------------------------------------
-# Step 3: HUMAN STEP — confirm segments.csv is present
+# Step 3: HUMAN STEP — confirm segments.csv is present (Gaming revenue series)
 # ---------------------------------------------------------------------------
-CURRENT_STEP="HUMAN confirm segments.csv"
+CURRENT_STEP="HUMAN confirm segments.csv (Gaming revenue)"
 log "HUMAN STEP: Confirm data/raw/segments.csv is present and ready."
 echo ""
 echo "  Expected file : ${DATA_RAW}/segments.csv"
-echo "  Required cols : fiscal_year, fiscal_quarter, segment, revenue (in million dollars),"
-echo "                  operating_income, source_url, Months"
+echo "  Required cols : fiscal_year, fiscal_quarter, segment,"
+echo "                  'revenue (in million dollars)', operating_income,"
+echo "                  source_url, Months"
+echo "  Note          : segment must be 'Gaming' for all rows."
+echo "                  This file loads into GAMING_REVENUE_SERIES (not QUARTERLY_FINANCIALS)."
 echo ""
-read -r -p "  Has segments.csv been placed at data/raw/segments.csv? [YES/no]: " CONFIRM_SEGMENTS
+read -r -p "  Has data/raw/segments.csv been placed and verified? [YES/no]: " CONFIRM_SEGMENTS
 if [[ "${CONFIRM_SEGMENTS}" != "YES" ]]; then
     log "Operator did not confirm segments.csv. Aborting pipeline."
     exit 1
 fi
 log "Operator confirmed segments.csv."
+
+# ---------------------------------------------------------------------------
+# Step 3b: load_segments_gaming.py
+# ---------------------------------------------------------------------------
+CURRENT_STEP="load_segments_gaming.py"
+log "Starting ${CURRENT_STEP} ..."
+"${VENV_PYTHON}" "${ETL_DIR}/load_segments_gaming.py"
+log "Completed ${CURRENT_STEP}."
 
 # ---------------------------------------------------------------------------
 # Step 4: load_steam.py

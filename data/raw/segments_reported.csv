@@ -1,0 +1,49 @@
+fiscal_year,fiscal_quarter,segment_name,revenue_m,operating_income_m,source_url,basis
+2023,1,Productivity and Business Processes,16465,8323,https://www.microsoft.com/en-us/investor/earnings/fy-2023-q1/press-release-webcast,as_reported_pre_recast
+2023,1,Intelligent Cloud,20325,8978,https://www.microsoft.com/en-us/investor/earnings/fy-2023-q1/press-release-webcast,as_reported_pre_recast
+2023,1,More Personal Computing,13332,4217,https://www.microsoft.com/en-us/investor/earnings/fy-2023-q1/press-release-webcast,as_reported_pre_recast
+2023,2,Productivity and Business Processes,17002,8175,https://www.microsoft.com/en-us/investor/earnings/fy-2023-q2/press-release-webcast,as_reported_pre_recast
+2023,2,Intelligent Cloud,21508,8904,https://www.microsoft.com/en-us/investor/earnings/fy-2023-q2/press-release-webcast,as_reported_pre_recast
+2023,2,More Personal Computing,14237,3320,https://www.microsoft.com/en-us/investor/earnings/fy-2023-q2/press-release-webcast,as_reported_pre_recast
+2023,3,Productivity and Business Processes,17516,8639,https://www.microsoft.com/en-us/investor/earnings/fy-2023-q3/press-release-webcast,as_reported_pre_recast
+2023,3,Intelligent Cloud,22081,9476,https://www.microsoft.com/en-us/investor/earnings/fy-2023-q3/press-release-webcast,as_reported_pre_recast
+2023,3,More Personal Computing,13260,4237,https://www.microsoft.com/en-us/investor/earnings/fy-2023-q3/press-release-webcast,as_reported_pre_recast
+2023,4,Productivity and Business Processes,18291,9052,https://www.microsoft.com/en-us/investor/earnings/fy-2023-q4/press-release-webcast,as_reported_pre_recast
+2023,4,Intelligent Cloud,23993,10526,https://www.microsoft.com/en-us/investor/earnings/fy-2023-q4/press-release-webcast,as_reported_pre_recast
+2023,4,More Personal Computing,13905,4676,https://www.microsoft.com/en-us/investor/earnings/fy-2023-q4/press-release-webcast,as_reported_pre_recast
+2024,1,Productivity and Business Processes,25226,14297,https://www.microsoft.com/en-us/investor/earnings/fy-2025-q1/press-release-webcast,recast_2024-08
+2024,1,Intelligent Cloud,20013,8908,https://www.microsoft.com/en-us/investor/earnings/fy-2025-q1/press-release-webcast,recast_2024-08
+2024,1,More Personal Computing,11278,3690,https://www.microsoft.com/en-us/investor/earnings/fy-2025-q1/press-release-webcast,recast_2024-08
+2024,2,Productivity and Business Processes,25854,14515,https://www.microsoft.com/en-us/investor/earnings/fy-2025-q2/press-release-webcast,recast_2024-08
+2024,2,Intelligent Cloud,21525,9555,https://www.microsoft.com/en-us/investor/earnings/fy-2025-q2/press-release-webcast,recast_2024-08
+2024,2,More Personal Computing,14641,2962,https://www.microsoft.com/en-us/investor/earnings/fy-2025-q2/press-release-webcast,recast_2024-08
+2024,3,Productivity and Business Processes,27113,15143,https://www.microsoft.com/en-us/investor/earnings/fy-2025-q3/press-release-webcast,recast_2024-08
+2024,3,Intelligent Cloud,22141,9515,https://www.microsoft.com/en-us/investor/earnings/fy-2025-q3/press-release-webcast,recast_2024-08
+2024,3,More Personal Computing,12604,2923,https://www.microsoft.com/en-us/investor/earnings/fy-2025-q3/press-release-webcast,recast_2024-08
+2024,4,Productivity and Business Processes,28627,15706,https://www.microsoft.com/en-us/investor/earnings/fy-2025-q4/press-release-webcast,recast_2024-08
+2024,4,Intelligent Cloud,23785,9835,https://www.microsoft.com/en-us/investor/earnings/fy-2025-q4/press-release-webcast,recast_2024-08
+2024,4,More Personal Computing,12315,2384,https://www.microsoft.com/en-us/investor/earnings/fy-2025-q4/press-release-webcast,recast_2024-08
+2025,1,Productivity and Business Processes,28317,16516,https://www.microsoft.com/en-us/investor/earnings/fy-2025-q1/press-release-webcast,as_reported
+2025,1,Intelligent Cloud,24092,10503,https://www.microsoft.com/en-us/investor/earnings/fy-2025-q1/press-release-webcast,as_reported
+2025,1,More Personal Computing,13176,3533,https://www.microsoft.com/en-us/investor/earnings/fy-2025-q1/press-release-webcast,as_reported
+2025,2,Productivity and Business Processes,29437,16885,https://www.microsoft.com/en-us/investor/earnings/fy-2025-q2/press-release-webcast,as_reported
+2025,2,Intelligent Cloud,25544,10851,https://www.microsoft.com/en-us/investor/earnings/fy-2025-q2/press-release-webcast,as_reported
+2025,2,More Personal Computing,14651,3917,https://www.microsoft.com/en-us/investor/earnings/fy-2025-q2/press-release-webcast,as_reported
+2025,3,Productivity and Business Processes,29944,17379,https://www.microsoft.com/en-us/investor/earnings/fy-2025-q3/press-release-webcast,as_reported
+2025,3,Intelligent Cloud,26751,11095,https://www.microsoft.com/en-us/investor/earnings/fy-2025-q3/press-release-webcast,as_reported
+2025,3,More Personal Computing,13371,3526,https://www.microsoft.com/en-us/investor/earnings/fy-2025-q3/press-release-webcast,as_reported
+2025,4,Productivity and Business Processes,33112,18993,https://www.microsoft.com/en-us/investor/earnings/fy-2025-q4/press-release-webcast,as_reported
+2025,4,Intelligent Cloud,29878,12140,https://www.microsoft.com/en-us/investor/earnings/fy-2025-q4/press-release-webcast,as_reported
+2025,4,More Personal Computing,13451,3190,https://www.microsoft.com/en-us/investor/earnings/fy-2025-q4/press-release-webcast,as_reported
+2026,1,Productivity and Business Processes,33020,20407,https://www.microsoft.com/en-us/investor/earnings/fy-2026-q1/press-release-webcast,as_reported
+2026,1,Intelligent Cloud,30897,13391,https://www.microsoft.com/en-us/investor/earnings/fy-2026-q1/press-release-webcast,as_reported
+2026,1,More Personal Computing,13756,4163,https://www.microsoft.com/en-us/investor/earnings/fy-2026-q1/press-release-webcast,as_reported
+2026,2,Productivity and Business Processes,34116,20599,https://www.microsoft.com/en-us/investor/earnings/fy-2026-q2/press-release-webcast,as_reported
+2026,2,Intelligent Cloud,32907,13873,https://www.microsoft.com/en-us/investor/earnings/fy-2026-q2/press-release-webcast,as_reported
+2026,2,More Personal Computing,14250,3803,https://www.microsoft.com/en-us/investor/earnings/fy-2026-q2/press-release-webcast,as_reported
+2026,3,Productivity and Business Processes,35013,20973,https://www.microsoft.com/en-us/investor/earnings/fy-2026-q3/press-release-webcast,as_reported
+2026,3,Intelligent Cloud,34681,13753,https://www.microsoft.com/en-us/investor/earnings/fy-2026-q3/press-release-webcast,as_reported
+2026,3,More Personal Computing,13192,3672,https://www.microsoft.com/en-us/investor/earnings/fy-2026-q3/press-release-webcast,as_reported
+2026,4,Productivity and Business Processes,37847,21900,https://www.microsoft.com/en-us/investor/earnings/fy-2026-q4/press-release-webcast,as_reported
+2026,4,Intelligent Cloud,39306,15955,https://www.microsoft.com/en-us/investor/earnings/fy-2026-q4/press-release-webcast,as_reported
+2026,4,More Personal Computing,12854,2748,https://www.microsoft.com/en-us/investor/earnings/fy-2026-q4/press-release-webcast,as_reported

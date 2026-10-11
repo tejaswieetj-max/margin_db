@@ -210,19 +210,24 @@ Six-stage implementation plan following the staged development process (Requirem
     - Write result to `data/raw/msft_facts.json`
     - _Requirements: 4.1, 4.10, 21.1_
 
-  - [x] 2.2 Write load_financials.py
-    - Read `data/raw/msft_facts.json`; extract quarterly Revenue, COGS, Operating Income only
-    - Skip annual and TTM frames; require all three metrics for a period (skip period if any missing)
-    - `INSERT ... ON DUPLICATE KEY UPDATE` for idempotency
-    - Validate fields before insert; log rejected rows with row identifier, field name, expected type/range, actual value
+  - [ ] 2.2 Write load_financials.py
+    - **REWRITTEN (pending owner re-verification)**: source changed from msft_facts.json to `data/raw/segments_reported.csv`; EDGAR is now validation-only
+    - Reads `data/raw/segments_reported.csv`; columns: `fiscal_year, fiscal_quarter, segment_name, revenue_m, operating_income_m, source_url, basis`
+    - Loads only PBP, IC, MPC rows (no Gaming segment lookup)
+    - `basis` values accepted: `as_reported_pre_recast`, `recast_2024-08`, `as_reported`; stored in QUARTERLY_FINANCIALS (column added by migration 08 section 10)
+    - `source_url` stored in QUARTERLY_FINANCIALS (column added by migration 08 section 10)
+    - `cogs` left NULL (not reported at segment level); `filed_date` left NULL
+    - `INSERT ... ON DUPLICATE KEY UPDATE` keyed on UNIQUE KEY `uq_qf_period (fiscal_year, fiscal_quarter, segment_id)` added by migration 08 section 10c
+    - Post-load validator: `abs(PBP+IC+MPC sum − EDGAR_total) / EDGAR_total ≤ 0.5%` per quarter using msft_facts.json; warns but does not abort
+    - Validate fields before insert; log rejected rows with identifier, field, expected, actual
     - _Requirements: 4.1, 4.7, 21.1, 21.2_
 
-  - [x] 2.3 HUMAN STEP — provide segments.csv (Phase A complete; all phases completed)
+  - [ ] 2.3 HUMAN STEP — provide segments.csv (Phase A complete; loader rewritten — pending owner re-verification)
     - **HUMAN STEP**: Provide `data/raw/segments.csv` with columns: `fiscal_year`, `fiscal_quarter`, `segment`, `revenue (in million dollars)`, `operating_income` (where disclosed), `source_url`, `Months`; no fabricated data
     - **Phase A validation result**: ✅ PASSED — 16 rows (FY23Q1–FY26Q4), no duplicates, no gaps, all revenue numeric/positive, all operating_income blank→NULL, all source_urls present, Months present. Cosmetic anomaly: FY24Q3 "mar" lower-cased.
     - **Unit convention (requires owner approval)**: Values in millions USD. Stored in GAMING_REVENUE_SERIES (separate table, not QUARTERLY_FINANCIALS). EDGAR raw USD ÷ 1,000,000 at load time.
     - **Months column**: Preserved as `months_label VARCHAR(40)` in GAMING_REVENUE_SERIES.
-    - Task state set to [~] — data file provided, loader (load_segments_gaming.py) to be written after Phase B approval.
+    - **Loader written**: `etl/load_segments_gaming.py` now exists; maps `revenue (in million dollars)` → `revenue_m`, preserves `Months` as `months_label`, leaves `operating_income` NULL, requires `source_url`. Added to `load_sales.sh` as Step 3b.
     - _Requirements: 4.7, 4.12, 22.5_
 
   - [x] 2.4 HUMAN STEP — provide steam_players.csv (Phase A complete, all phases completed)
@@ -269,10 +274,11 @@ Six-stage implementation plan following the staged development process (Requirem
     - `INSERT IGNORE` for idempotency; log count of rows inserted per event
     - _Requirements: 4.2_
 
-  - [x] 2.10 Write gen_synthetic_sales.py
-    - Read dimension tables and `QUARTERLY_FINANCIALS` from DB
+  - [ ] 2.10 Write gen_synthetic_sales.py
+    - **REWRITTEN (pending owner re-verification)**: Gaming reconciliation target now sourced from GAMING_REVENUE_SERIES (real data); hardcoded 70/30 MPC split removed
+    - Read dimension tables, `QUARTERLY_FINANCIALS`, and `GAMING_REVENUE_SERIES` from DB
     - Generate 2M–5M `FACT_SALES` rows at Daily_Aggregate grain for FY23Q1–FY26Q4 only (2022-07-01 to 2026-06-30); `is_synthetic=TRUE` (column default)
-    - Reconciliation — three independent groups: Gaming, MPC (excl. Gaming), Productivity+Cloud; `SUM(gross_amount)` per `(fiscal_year, fiscal_quarter, segment_id)` must match `QUARTERLY_FINANCIALS.revenue` within 0.1%; each group reconciled independently; print reconciliation report; ABORT if any combination exceeds 0.1%
+    - Reconciliation — three independent groups: Gaming, MPC (excl. Gaming), Productivity+Cloud; Gaming target = `GAMING_REVENUE_SERIES.revenue_m`; MPC non-Gaming target = QUARTERLY_FINANCIALS MPC total − GAMING_REVENUE_SERIES Gaming; PBP+IC target = QUARTERLY_FINANCIALS PBP + IC; aborts loudly if any required row is missing; ABORT if any combination exceeds 0.1%
     - Apply event lifts from `EVENT_WINDOW_DAY` during event windows
     - Seasonality: Black Friday rows × 3.0, December rows × 1.5
     - Device mix: Xbox 40%, Windows PC 35%, Mobile 15%, Cloud 5%, Mac 5%; `oem` non-null only for Windows PC rows
@@ -288,7 +294,9 @@ Six-stage implementation plan following the staged development process (Requirem
     - _Requirements: 4.6, 21.1_
 
   - [x] 2.11 Write load_sales.sh — ETL master orchestrator
-    - ETL sequence: `fetch_edgar.py` → `load_financials.py` → [HUMAN: confirm segments.csv] → `load_steam.py` → `load_trends.py` → [HUMAN: confirm events.csv] → `load_events.py` → `compute_event_windows.py` → `gen_synthetic_sales.py` → LOAD DATA LOCAL INFILE loop → reconciliation check
+  - [ ] 2.11 Write load_sales.sh — ETL master orchestrator
+    - **UPDATED (pending owner re-verification)**: Step 3b `load_segments_gaming.py` added between segments.csv human confirmation and load_steam.py
+    - ETL sequence: `fetch_edgar.py` → `load_financials.py` → [HUMAN: confirm segments.csv] → `load_segments_gaming.py` → `load_steam.py` → `load_trends.py` → [HUMAN: confirm events.csv] → `load_events.py` → `compute_event_windows.py` → `gen_synthetic_sales.py` → LOAD DATA LOCAL INFILE loop → reconciliation check
     - `set -euo pipefail`; log UTC + source filename on any step failure; halt on failure
     - LOAD DATA LOCAL INFILE processes `data/clean/sales_chunk_*.csv` one chunk at a time
     - **HUMAN STEP** before bulk load: ask operator to confirm dropping the `FACT_SALES BEFORE INSERT` trigger for performance; recreate trigger immediately after bulk load completes
