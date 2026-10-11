@@ -552,11 +552,11 @@ Six-stage implementation plan following the staged development process (Requirem
     - _Requirements: 6.5_
 
   - [ ] 4.8 Write test_concurrency.py
-    - Read current `version` from `PRICING_RULE WHERE rule_id=1` via admin connection before spawning threads
-    - Spawn two threads that simultaneously submit `PUT /pricing/1` with that version as `expected_version`
+    - Setup: INSERT test PRICING_RULE row via admin connection (table starts EMPTY) via admin connection before spawning threads
+    - Spawn two threads that simultaneously submit `PUT /pricing/{test_rule_id}` with that version as `expected_version`
     - Assert `sorted(results) == [200, 409]`
     - Assert exactly one `CONFLICT_LOG` row for `rule_id=1` with `stale_version=current_version` created during this test
-    - Clean up `CONFLICT_LOG` rows at teardown (via admin connection)
+    - Teardown: DELETE test PRICING_RULE row and CONFLICT_LOG entries via admin connection (via admin connection)
     - _Requirements: 18.2_
 
   - [ ] 4.9 Write property-based test for full-scan flag rule completeness (Property 3)
@@ -574,8 +574,8 @@ Six-stage implementation plan following the staged development process (Requirem
     - **Validates: Requirements 9.3, 9.4**
 
   - [ ] 4.11 Write test_demo_loop.py
-    - Drop any prior test index at start via admin connection for idempotency (`ALTER TABLE FACT_SALES DROP INDEX IF EXISTS idx_rec_...`)
-    - Step 1: `POST /sql` with Heavy_Demo_Query from `tests/heavy_demo_query.sql`; assert `qe_id` in response; record pre-index `duration_ms` from API response (not wall-clock)
+    - Drop any prior test index at start via admin connection for idempotency (`ALTER TABLE AZURE_VM DROP INDEX IF EXISTS idx_rec_...`)
+    - Step 1: `POST /sql` with Heavy_Demo_Query (scans AZURE_VM via v_vm_workload); assert `qe_id` in response; record pre-index `duration_ms` from API response (not wall-clock)
     - Step 2: Poll `GET /index-recs` up to 60 seconds (2-second intervals) until a recommendation for that `qe_id` appears; assert `rec_id` found
     - Step 3: `POST /index-recs/{rec_id}/approve`; assert HTTP 200
     - Step 4: Poll via admin connection `SELECT COUNT(*) FROM information_schema.STATISTICS WHERE TABLE_SCHEMA=? AND TABLE_NAME=? AND INDEX_NAME=?` (1-second intervals) up to 30 seconds until count > 0; assert `index_visible=True`
