@@ -55,7 +55,7 @@ Six-stage implementation plan following the staged development process (Requirem
     - Stage-by-stage run instructions; demo loop instructions with concrete commands in each section
     - Note on MySQL stored procedure syntax vs Oracle PL/SQL: "MySQL uses `DELIMITER` to define multi-statement procedures; there is no `DECLARE...EXCEPTION` block, no `DBMS_*` packages, no `:=` operator, and no `RAISE_APPLICATION_ERROR`. Error handling uses `DECLARE ... HANDLER FOR SQLEXCEPTION BEGIN ... END`."
     - `uname -m` platform notes
-    - Weak entities note: "This schema has four weak entities: ORDER_ITEM (owner ORDERS), EVENT_WINDOW_DAY (owner BUSINESS_EVENT), QUERY_PLAN_NODE (owner QUERY_EXECUTION), FORECAST_LINE (owner FORECAST)"
+    - Weak entities note: "This schema has four weak entities: ORDER_ITEM (owner ORDERS), EVENT_WINDOW_MONTH (owner BUSINESS_EVENT), QUERY_PLAN_NODE (owner QUERY_EXECUTION), FORECAST_LINE (owner FORECAST)"
     - _Requirements: 20.3, 20.5_
 
   - [x] 0.5 Stage 0 gate
@@ -73,7 +73,7 @@ Six-stage implementation plan following the staged development process (Requirem
     - `INDEX_RECOMMENDATION`: include `index_name VARCHAR(128)` column
     - `DB_SIZE_SNAPSHOT`: `is_synthetic BOOLEAN NOT NULL DEFAULT FALSE`; `UNIQUE KEY (snapped_at)` to prevent duplicate daily snapshots
     - FK constraints on all tables except `FACT_SALES`
-    - Four weak entities with composite PKs: `ORDER_ITEM (order_id, line_no)`, `EVENT_WINDOW_DAY (event_id, day_offset)`, `QUERY_PLAN_NODE (qe_id, node_id)`, `FORECAST_LINE (forecast_id, line_no)`
+    - Four weak entities with composite PKs: `ORDER_ITEM (order_id, line_no)`, `EVENT_WINDOW_MONTH (event_id, day_offset)`, `QUERY_PLAN_NODE (qe_id, node_id)`, `FORECAST_LINE (forecast_id, line_no)`
     - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5, 14.1_
 
   - [x] 1.1b Write sql/reset_db.sql — destructive reset script
@@ -235,7 +235,7 @@ Six-stage implementation plan following the staged development process (Requirem
 
   - [x] 2.4 HUMAN STEP — provide steam_players.csv (Phase A complete, all phases completed)
     - **HUMAN STEP**: Provide `data/raw/steam_players.csv` with columns: `app_id`, `obs_date`, `avg_players`, `peak_players`; no fabricated data
-    - **Phase A validation result**: ✅ PASSED — 5 app IDs. Coverage: apps 1938090/1172620/1240440/1551360 have 49 rows each (Oct 2022 – Sep 2026); app 1716740 (Starfield) has 37 rows (Sep 2023 – Sep 2026). Total: 4×49 + 37 = 233 rows. No duplicates, no missing months within each app's range, all obs_date = 1st of month, avg_players is decimal, peak_players is integer, no negatives.
+    - **Phase A validation result**: ✅ PASSED — 5 app IDs. Coverage: apps 1938090/1172620/1240440/1551360 have 48 rows each (Oct 2022 – Sep 2026); app 1716740 (Starfield) has 37 rows (Sep 2023 – Sep 2026). Total: 4×48 + 37 = 229 rows. No duplicates, no missing months within each app's range, all obs_date = 1st of month, avg_players is decimal, peak_players is integer, no negatives.
     - App IDs verified: 1938090=Call of Duty, 1172620=Sea of Thieves, 1240440=Halo Infinite, 1551360=Forza Horizon 5, 1716740=Starfield.
     - Task state set to [~] — data file provided, loader to be updated for DECIMAL avg_players after Phase B approval.
     - _Requirements: 4.2, 4.12, 22.5_
@@ -282,7 +282,7 @@ Six-stage implementation plan following the staged development process (Requirem
     - Read dimension tables, `QUARTERLY_FINANCIALS`, and `GAMING_REVENUE_SERIES` from DB
     - Generate 2M–5M `FACT_SALES` rows at Daily_Aggregate grain for FY23Q1–FY26Q4 only (2022-07-01 to 2026-06-30); `is_synthetic=TRUE` (column default)
     - Reconciliation — three independent groups: Gaming, MPC (excl. Gaming), Productivity+Cloud; Gaming target = `GAMING_REVENUE_SERIES.revenue_m`; MPC non-Gaming target = QUARTERLY_FINANCIALS MPC total − GAMING_REVENUE_SERIES Gaming; PBP+IC target = QUARTERLY_FINANCIALS PBP + IC; aborts loudly if any required row is missing; ABORT if any combination exceeds 0.1%
-    - Apply event lifts from `EVENT_WINDOW_DAY` during event windows
+    - Apply event lifts from `EVENT_WINDOW_MONTH` during event windows
     - Seasonality: Black Friday rows × 3.0, December rows × 1.5
     - Device mix: Xbox 40%, Windows PC 35%, Mobile 15%, Cloud 5%, Mac 5%; `oem` non-null only for Windows PC rows
     - `unit_cost_ratio` drives `cost_amount = unit_price × unit_cost_ratio` for PBP/IC/MPC products (synthetic only, never presented as real margin). Gaming products: `cost_amount = NULL` (no Gaming cost data disclosed; do not fabricate). Document unit_cost_ratio values in `docs/MARGIN_DB.md` with an explicit label "synthetic approximation — not reported data"
@@ -296,7 +296,6 @@ Six-stage implementation plan following the staged development process (Requirem
       - `INSERT INTO CONFIG (config_key, config_value) VALUES ('DB_ALLOCATED_MB', computed_value) ON DUPLICATE KEY UPDATE config_value = VALUES(config_value)`
     - _Requirements: 4.6, 21.1_
 
-  - [ ] 2.11 Write load_sales.sh — ETL master orchestrator
   - [ ] 2.11 Write load_sales.sh — ETL master orchestrator
     - **UPDATED (pending owner re-verification)**: Step 3b `load_segments_gaming.py` added between segments.csv human confirmation and load_steam.py
     - ETL sequence: `fetch_edgar.py` → `load_financials.py` → [HUMAN: confirm segments.csv] → `load_segments_gaming.py` → `load_steam.py` → `load_trends.py` → [HUMAN: confirm events.csv] → `load_events.py` → `compute_event_windows.py` → `gen_synthetic_sales.py` → LOAD DATA LOCAL INFILE loop → reconciliation check
