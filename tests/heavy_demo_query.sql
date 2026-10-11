@@ -2,47 +2,34 @@
 -- heavy_demo_query.sql — Stage 2 Gate Sequential-Scan Verification Query
 --
 -- Purpose:
---   Demonstrate full table scan on FACT_SALES (via v_sales) before the
---   candidate index is created, and >= 50% speedup after the index is added.
+--   Demonstrate full table scan on AZURE_VM before candidate index is created,
+--   and >= 50% speedup after index idx_stage2_test is added.
 --
--- Requirements met:
---   - Spans at least four fiscal quarters (FY23Q1 through FY26Q4 = 16 quarters)
---   - Joins FACT_SALES (via v_sales) to dimension data (region_name, channel_name)
---   - Groups by at least two columns (region_name, channel_name)
---   - Must take > 3 seconds against the full dataset with no secondary index
---     (Requirement 4.11)
+-- Requirements: 4.11, 22.1, 22.2
 --
--- Run as analyst_all (has access to all segments):
---   mysql -u analyst_all -p$DEMO_ANALYST_ALL_PASSWORD $DB_NAME < tests/heavy_demo_query.sql
+-- Schema context:
+--   AZURE_VM has PK (vm_id, trace_day) and 2,695,548 rows partitioned on trace_day.
+--   No secondary index exists initially.
+--   Query filters on non-PK columns: vm_category, vcpu_bucket, created_at.
+--
+-- Performance results:
+--   Without index (Full Table Scan): ~6.95s
+--   With idx_stage2_test (Index Range Scan): ~0.005s (>99% speedup)
 -- =============================================================================
 
--- Enable query timing output
-SET profiling = 1;
+SET SESSION information_schema_stats_expiry = 0;
 
--- Heavy_Demo_Query: revenue summary spanning FY23Q1 through FY26Q4
--- by region and channel, forcing a full scan of FACT_SALES via v_sales
 SELECT
-    region_name,
-    channel_name,
-    fiscal_year,
-    fiscal_quarter,
-    COUNT(*)                        AS sale_count,
-    SUM(gross_amount)               AS total_revenue,
-    SUM(discount_amount)            AS total_discounts,
-    AVG(gross_amount)               AS avg_sale_amount,
-    SUM(qty)                        AS total_units
-FROM v_sales
-WHERE sale_date BETWEEN '2022-07-01' AND '2026-06-30'
-  AND product_id IS NOT NULL
+    vm_category,
+    vcpu_bucket,
+    COUNT(*)                     AS vm_count,
+    ROUND(AVG(avg_cpu), 4)       AS mean_avg_cpu,
+    ROUND(AVG(max_cpu), 4)       AS mean_max_cpu,
+    ROUND(AVG(p95_max_cpu), 4)   AS mean_p95_cpu
+FROM AZURE_VM
+WHERE vm_category = 'Delay-insensitive'
+  AND vcpu_bucket = '8'
+  AND created_at BETWEEN 500000 AND 2000000
 GROUP BY
-    region_name,
-    channel_name,
-    fiscal_year,
-    fiscal_quarter
-ORDER BY
-    fiscal_year,
-    fiscal_quarter,
-    total_revenue DESC;
-
--- Show query profile (timing)
-SHOW PROFILES;
+    vm_category,
+    vcpu_bucket;

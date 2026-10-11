@@ -43,12 +43,13 @@ GRANT SHOW VIEW ON margin_db.v_partitions        TO 'business_analyst';
 --       no explicit GRANT is needed.
 -- ---------------------------------------------------------------------------
 
--- SELECT on intelligence/monitoring tables
+-- SELECT on intelligence/monitoring tables and real workload table
 GRANT SELECT ON margin_db.QUERY_EXECUTION      TO 'db_engineer';
 GRANT SELECT ON margin_db.QUERY_PLAN_NODE      TO 'db_engineer';
 GRANT SELECT ON margin_db.INDEX_RECOMMENDATION TO 'db_engineer';
 GRANT SELECT ON margin_db.DB_SIZE_SNAPSHOT     TO 'db_engineer';
 GRANT SELECT ON margin_db.CONFLICT_LOG         TO 'db_engineer';
+GRANT SELECT ON margin_db.AZURE_VM             TO 'db_engineer';
 
 -- SELECT on engineer views
 GRANT SELECT ON margin_db.v_events_min        TO 'db_engineer';

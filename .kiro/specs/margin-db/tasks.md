@@ -295,8 +295,8 @@ Six-stage implementation plan following the staged development process (Requirem
     - `set -euo pipefail`; log UTC + source filename on any step failure; halt on failure
     - _Requirements: 4.8, 4.10, 4.11_
 
-  - [ ] 2.12 Stage 2 gate — seq-scan verification
-    - **HUMAN STEP**: Confirm ETL is complete and AZURE_VM has exactly 2,695,548 rows; confirm no secondary index on AZURE_VM exists
+  - [x] 2.12 Stage 2 gate — seq-scan verification
+    - **HUMAN STEP**: Confirm ETL is complete and AZURE_VM has exactly 2,695,548 rows; confirm no secondary index on AZURE_VM exists - confirmed by human
     - Execute Heavy_Demo_Query via MySQL CLI as the user who has the grant (`engineer_demo` or `analyst_demo`; no backend required at this stage):
       `mysql -u engineer_demo -p$DEMO_ENGINEER_PASSWORD $DB_NAME < tests/heavy_demo_query.sql`
     - Run `EXPLAIN` on the underlying `v_vm_workload` query; output must show full table scan on `AZURE_VM`
@@ -331,7 +331,7 @@ Six-stage implementation plan following the staged development process (Requirem
     - [~] IN PROGRESS: Full 2-component SP applied to DB via `sql/migrations/11_stage3_routines.sql`. Awaiting Stage 3 gate validation.
     - _Requirements: 15.1, 5.1, 5.2, 5.10_
 
-  - [ ] 3.3 Implement sp_forecast_business
+  - [~] 3.3 Implement sp_forecast_business
     - Read CONFIG keys at start: EVENT_PRE_MONTHS, EVENT_POST_MONTHS, BASELINE_MONTHS, MIN_BASELINE_MONTHS, FORECAST_LIFT_MONTHS (all default 3); never hardcode these values
     - Baseline: trailing 4-quarter average monthly revenue from QUARTERLY_FINANCIALS (post-2023-10 quarters only, to use post-Activision-acquisition data); verify caller has segment access via USER_SEGMENT_MAP; return empty result set if not permitted
     - Lift source selection (in order of preference):
@@ -361,18 +361,19 @@ Six-stage implementation plan following the staged development process (Requirem
     - No Gaming cost, operating income or margin anywhere in this procedure
     - _Requirements: 8.1, 8.2, 8.3, 8.4, 8.5, 8.7, 5.10_
 
-  - [ ] 3.4 Implement sp_update_pricing_rule
+  - [~] 3.4 Implement sp_update_pricing_rule
     - Replace stub: `UPDATE PRICING_RULE SET price_value=p_new_value, version=version+1 WHERE rule_id=p_rule_id AND version=p_expected_version`
     - `ROW_COUNT()=1` → `p_status='OK'`; version already incremented
     - `ROW_COUNT()=0` → INSERT CONFLICT_LOG, `p_status='CONFLICT'`; no SIGNAL on mismatch
     - `SUBSTRING_INDEX(USER(),'@',1)` for `attempted_by` in CONFLICT_LOG
+    - [~] IN PROGRESS: Implemented in `sql/migrations/11_stage3_routines.sql`. Awaiting Stage 3 gate validation.
     - _Requirements: 12.1, 12.2_
 
   - [REMOVED] 3.5 Implement sp_place_order
     - REMOVED / NOT APPLICABLE: Order placement and synthetic transaction tables (ORDERS, ORDER_ITEM, FACT_SALES) are unused with real Azure VM workload data
     - _Requirements: 13.1_
 
-  - [ ] 3.6 Implement sp_recommend_index and sp_record_index_test
+  - [~] 3.6 Implement sp_recommend_index and sp_record_index_test
     - `sp_recommend_index(IN p_qe_id BIGINT, IN p_table VARCHAR(64), IN p_columns_csv VARCHAR(500), OUT p_rec_id INT)`:
       1. Deduplicate: check existing active rec for same `(table_name, columns_csv)` with status in ('proposed','testing','applied'); if found, RETURN (no-op)
       2. Whitelist check: `p_table` must be in allowed list (AZURE_VM); `SIGNAL SQLSTATE '45001'` if not
@@ -384,20 +385,23 @@ Six-stage implementation plan following the staged development process (Requirem
          (INVISIBLE before the comma; index is not used by optimizer until engineer approves)
     - `sp_record_index_test(p_rec_id, p_before_ms, p_after_ms)`: `UPDATE INDEX_RECOMMENDATION SET before_ms=p_before_ms, after_ms=p_after_ms WHERE rec_id=p_rec_id`
     - Also implement `sp_flag_query(IN p_qe_id BIGINT)`: `UPDATE QUERY_EXECUTION SET flagged=1 WHERE qe_id=p_qe_id;` (SQL SECURITY DEFINER)
+    - [~] IN PROGRESS: `sp_record_index_test` and `sp_flag_query` in migration 11; `sp_recommend_index` in migration 12.
     - _Requirements: 7.5, 7.6, 7.9_
 
-  - [ ] 3.7 Implement sp_apply_index and sp_reject_index
+  - [~] 3.7 Implement sp_apply_index and sp_reject_index
     - `sp_apply_index(p_rec_id)`:
       - Before calling ALTER INDEX VISIBLE: verify `after_ms IS NOT NULL`; if NULL, return error result set `SELECT 'Index test not yet complete' AS result`; the engineer router maps this to HTTP 409
       - Verify `status='testing'`; dynamic `ALTER TABLE ... ALTER INDEX ... VISIBLE`; UPDATE status='applied', decided_by, decided_at=NOW(3); return `SELECT 'applied' AS result`
     - `sp_reject_index(p_rec_id)`: verify `status IN ('testing','proposed')`; dynamic `ALTER TABLE ... DROP INDEX`; if ALTER fails (index not existing), return error result set without re-raising; UPDATE status='rejected'; return `SELECT 'rejected' AS result`
+    - [~] IN PROGRESS: Implementing in migration 12.
     - _Requirements: 7.7, 7.8, 7.10_
 
-  - [ ] 3.8 Implement sp_add_partition
+  - [~] 3.8 Implement sp_add_partition
     - Dynamic SQL: `REORGANIZE PARTITION p_catch INTO (new named partition + new p_catch MAXVALUE)`
     - Whitelist `p_table_name` (only AZURE_VM allowed); SIGNAL if not
     - Generate partition name from boundary date in `p_FYyyQq` format
     - PREPARE/EXECUTE/DEALLOCATE PREPARE pattern
+    - [~] IN PROGRESS: Implementing in migration 12.
     - _Requirements: 14.2_
 
   - [ ] 3.9 Implement sp_forecast_database
@@ -412,11 +416,13 @@ Six-stage implementation plan following the staged development process (Requirem
     - `as_of_date` from session variable
     - _Requirements: 9.1, 9.2, 9.3, 9.4, 9.5, 9.6, 9.7, 9.8, 9.9, 17.4, 17.5_
 
-  - [ ] 3.10 Implement sp_insert_qe and sp_insert_qpn
+  - [~] 3.10 Implement sp_insert_qe and sp_insert_qpn
     - `sp_insert_qe`: `INSERT INTO QUERY_EXECUTION(...) VALUES(...); SET p_qe_id = LAST_INSERT_ID();` SQL SECURITY DEFINER
     - `sp_insert_qpn`: `INSERT INTO QUERY_PLAN_NODE(...) VALUES(...);` SQL SECURITY DEFINER
     - Both already granted to `role_telemetry` via `07_grants.sql` (task 1.7)
+    - [~] IN PROGRESS: Implemented in `sql/migrations/11_stage3_routines.sql`. Awaiting Stage 3 gate validation.
     - _Requirements: 7.3_
+
 
   - [ ] 3.11 Write property-based test for optimistic lock (Property 1)
     - Use `hypothesis`; generate concurrent updates with same `expected_version`
