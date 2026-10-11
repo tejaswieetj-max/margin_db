@@ -109,7 +109,7 @@ Six-stage implementation plan following the staged development process (Requirem
       - `sp_margin_decomposition(IN p_segment VARCHAR(50), IN p_period_a VARCHAR(10), IN p_period_b VARCHAR(10))`
       - `sp_forecast_business(IN p_event_id INT UNSIGNED)`
       - `sp_update_pricing_rule(IN p_rule_id INT, IN p_new_value DECIMAL(10,4), IN p_expected_version INT, OUT p_status VARCHAR(20))`
-      - `sp_place_order(IN p_order_date DATE, IN p_device_id INT, IN p_region_id INT, IN p_channel_id INT, IN p_items JSON)`
+      - `sp_place_order(IN p_order_date DATE, IN p_device_id INT, IN p_region_id INT, IN p_channel_id INT, IN p_items JSON)` (stub in 04_routines.sql kept for schema compatibility; REMOVED from implementation in Stage 3)
       - `sp_recommend_index(IN p_qe_id BIGINT, IN p_table VARCHAR(64), IN p_columns_csv VARCHAR(500), OUT p_rec_id INT)`
       - `sp_apply_index(IN p_rec_id INT)`
       - `sp_reject_index(IN p_rec_id INT)`
@@ -147,7 +147,7 @@ Six-stage implementation plan following the staged development process (Requirem
     - NOTE: FACT_SALES, ORDERS, ORDER_ITEM remain defined but EMPTY (no synthetic data; kept for schema compatibility)
 
   - [x] 1.7 Write 07_grants.sql — ALL GRANT statements (only file with GRANTs)
-    - GRANT to `business_analyst`: SELECT on `v_vm_workload`, `v_financials`, `v_events`, `v_forecast_business`, `v_my_queries`; EXECUTE on `sp_margin_decomposition`, `sp_forecast_business`, `sp_update_pricing_rule`, `sp_place_order`; SHOW VIEW on all `v_*` views
+    - GRANT to `business_analyst`: SELECT on `v_vm_workload`, `v_financials`, `v_events`, `v_forecast_business`, `v_my_queries`; EXECUTE on `sp_margin_decomposition`, `sp_forecast_business`, `sp_update_pricing_rule`, `sp_place_order` (stub granted in Stage 1; REMOVED from Stage 3); SHOW VIEW on all `v_*` views
     - GRANT to `db_engineer`: SELECT on `QUERY_EXECUTION`, `QUERY_PLAN_NODE`, `INDEX_RECOMMENDATION`, `DB_SIZE_SNAPSHOT`, `CONFLICT_LOG`, `v_events_min`, `v_forecast_database`, `v_partitions`, `v_vm_workload`; SELECT on `performance_schema`; EXECUTE on `sp_apply_index`, `sp_reject_index`, `sp_add_partition`, `sp_snapshot_sizes`, `sp_forecast_database`; SHOW VIEW on all `v_*` views
     - Note: `information_schema` is accessible to all authenticated MySQL users by default; no explicit GRANT is needed for db_engineer to query information_schema.
     - GRANT to `role_telemetry`: INSERT+UPDATE on `QUERY_EXECUTION`, `QUERY_PLAN_NODE`, `INDEX_RECOMMENDATION`; EXECUTE on `sp_recommend_index`, `sp_insert_qe`, `sp_insert_qpn`, `sp_record_index_test`, `sp_flag_query`
@@ -460,7 +460,7 @@ Six-stage implementation plan following the staged development process (Requirem
     - Verify both EVENTs (`ev_snapshot_sizes`, `ev_recalc_forecasts`) appear as ENABLED in `information_schema.EVENTS`
     - Verify EXPLAIN ANALYZE on `AZURE_VM` still shows full table scan (no index added yet)
     - Write `docs/stage_3_report.md`
-    - **git commit**: `git add -A && git commit -m "Stage 3: stored routines, telemetry SPs, backfill"`
+    - **git commit**: `git add <paths> && git commit -m "Stage 3: stored routines, telemetry SPs"`
     - _Requirements: 22.1, 22.2_
 
 - [ ] 4. Stage 4 — Backend API
