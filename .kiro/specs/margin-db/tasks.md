@@ -73,8 +73,8 @@ Six-stage implementation plan following the staged development process (Requirem
     - `INDEX_RECOMMENDATION`: include `index_name VARCHAR(128)` column
     - `DB_SIZE_SNAPSHOT`: `is_synthetic BOOLEAN NOT NULL DEFAULT FALSE`; `UNIQUE KEY (snapped_at)` to prevent duplicate daily snapshots
     - FK constraints on all tables except `FACT_SALES`
-    - Four weak entities with composite PKs: `ORDER_ITEM (order_id, line_no)`, `EVENT_WINDOW_MONTH (event_id, day_offset)`, `QUERY_PLAN_NODE (qe_id, node_id)`, `FORECAST_LINE (forecast_id, line_no)`
-    - NOTE: AZURE_VM table added in migration 10 (not in 01_ddl.sql)
+    - Four weak entities with composite PKs: `ORDER_ITEM (order_id, line_no)`, `EVENT_WINDOW_MONTH (event_id, month_offset)`, `QUERY_PLAN_NODE (qe_id, node_id)`, `FORECAST_LINE (forecast_id, line_no)`
+    - NOTE: AZURE_VM table added in migration 10a (not in 01_ddl.sql)
     - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5, 14.1_
 
   - [x] 1.1b Write sql/reset_db.sql — destructive reset script
