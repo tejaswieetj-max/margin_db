@@ -193,10 +193,11 @@ assert_denied \
   "SELECT 1 FROM QUARTERLY_FINANCIALS LIMIT 1"
 
 echo ""
-echo "--- Row-count check: analyst_demo v_sales matches Gaming-only rows ---"
+echo "--- Row-count check: analyst_demo v_sales shows only Gaming product_line rows ---"
 
-# 7a. Compute the Gaming-only row count via the admin user (ground truth)
-#     This query joins FACT_SALES → PRODUCT → COMPANY_SEGMENT and filters to the Gaming segment.
+# 7a. Compute the Gaming-product-line row count via admin (ground truth).
+#     analyst_demo is mapped to MPC segment with product_line='Gaming'.
+#     v_sales filters on (segment_id IN USM AND product_line matches USM.product_line).
 gaming_count=$(MYSQL_PWD="$ADMIN_PASSWORD" mysql \
   -h "$DB_HOST" \
   -P "$DB_PORT" \
@@ -205,9 +206,8 @@ gaming_count=$(MYSQL_PWD="$ADMIN_PASSWORD" mysql \
   --skip-column-names \
   -e "SELECT COUNT(*)
       FROM FACT_SALES fs
-      JOIN PRODUCT p  ON fs.product_id = p.product_id
-      JOIN COMPANY_SEGMENT cs ON p.segment_id = cs.segment_id
-      WHERE cs.name = 'Gaming'" 2>&1) || true
+      JOIN PRODUCT p ON fs.product_id = p.product_id
+      WHERE p.product_line = 'Gaming'" 2>&1) || true
 
 gaming_count="${gaming_count// /}"
 gaming_count="${gaming_count//$'\t'/}"
@@ -215,15 +215,50 @@ gaming_count="${gaming_count//$'\n'/}"
 gaming_count="${gaming_count//$'\r'/}"
 
 if ! [[ "$gaming_count" =~ ^[0-9]+$ ]]; then
-  echo "FAIL  Could not retrieve Gaming-only row count from admin; got: $gaming_count"
+  echo "FAIL  Could not retrieve Gaming product_line row count from admin; got: $gaming_count"
   FAIL=$((FAIL + 1))
 else
-  # 7b. Assert analyst_demo sees the same count through v_sales
+  # 7b. analyst_demo sees the same count through v_sales
   assert_row_count \
-    "analyst_demo v_sales row count matches Gaming-only rows (expected=$gaming_count)" \
+    "analyst_demo v_sales matches Gaming product_line rows (expected=$gaming_count)" \
     "$ANALYST_DEMO_USERNAME" "$DEMO_ANALYST_PASSWORD" \
     "SELECT COUNT(*) FROM v_sales" \
     "$gaming_count"
+fi
+
+echo ""
+echo "--- Denial checks: engineer_demo GAMING_REVENUE_SERIES ---"
+
+# 8. engineer_demo must NOT be able to read GAMING_REVENUE_SERIES
+assert_denied \
+  "engineer_demo denied SELECT on GAMING_REVENUE_SERIES" \
+  "$ENGINEER_DEMO_USERNAME" "$DEMO_ENGINEER_PASSWORD" \
+  "SELECT 1 FROM GAMING_REVENUE_SERIES LIMIT 1"
+
+echo ""
+echo "--- analyst_demo cannot see non-Gaming rows in v_financials ---"
+
+# 9. analyst_demo is mapped to MPC; v_financials should only return MPC rows.
+#    Verify no PBP or IC rows appear.
+pbp_count=$(MYSQL_PWD="$DEMO_ANALYST_PASSWORD" mysql \
+  -h "$DB_HOST" \
+  -P "$DB_PORT" \
+  -u "$ANALYST_DEMO_USERNAME" \
+  "$DB_NAME" \
+  --skip-column-names \
+  -e "SELECT COUNT(*) FROM v_financials
+      WHERE segment_name NOT IN ('More Personal Computing')" 2>&1) || true
+pbp_count="${pbp_count// /}"
+pbp_count="${pbp_count//$'\t'/}"
+pbp_count="${pbp_count//$'\n'/}"
+pbp_count="${pbp_count//$'\r'/}"
+
+if [[ "$pbp_count" == "0" ]]; then
+  echo "PASS  analyst_demo v_financials shows MPC rows only (no PBP/IC)"
+  PASS=$((PASS + 1))
+else
+  echo "FAIL  analyst_demo v_financials returned $pbp_count non-MPC rows (expected 0)"
+  FAIL=$((FAIL + 1))
 fi
 
 # ---------------------------------------------------------------------------

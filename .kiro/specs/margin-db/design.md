@@ -207,14 +207,14 @@ def call_sp_out(conn, sp_name: str, in_params: list, out_count: int):
 
 | Table | Key Columns | Notes |
 |-------|-------------|-------|
-| `COMPANY_SEGMENT` | `segment_id INT PK AUTO_INCREMENT`, `name VARCHAR(50) UNIQUE NOT NULL` | Gaming, Productivity & Business Cloud, More Personal Computing |
+| `COMPANY_SEGMENT` | `segment_id INT PK AUTO_INCREMENT`, `name VARCHAR(50) UNIQUE NOT NULL` | Three official reporting segments: Productivity and Business Processes (PBP), Intelligent Cloud (IC), More Personal Computing (MPC). Gaming is a product line inside MPC — it is NOT a COMPANY_SEGMENT row. |
 | `DIM_DATE` | `date_id INT PK`, `calendar_date DATE UNIQUE`, `fiscal_year SMALLINT`, `fiscal_quarter TINYINT`, `is_black_friday BOOLEAN`, `is_holiday BOOLEAN` | 2022-07-01 to 2027-06-30; Microsoft FY ends June 30 |
 | `DIM_DEVICE` | `device_id INT PK AUTO_INCREMENT`, `platform VARCHAR(20)`, `device_family VARCHAR(50)`, `oem VARCHAR(50) NULL` | oem non-null only for Windows PC |
 | `DIM_REGION` | `region_id INT PK AUTO_INCREMENT`, `name VARCHAR(50)`, `parent_region VARCHAR(50)` | Americas, EMEA, APAC |
 | `DIM_CHANNEL` | `channel_id INT PK AUTO_INCREMENT`, `name VARCHAR(50)` | Digital, Physical, Subscription |
-| `PRODUCT` | `product_id INT PK AUTO_INCREMENT`, `segment_id INT FK→COMPANY_SEGMENT`, `name VARCHAR(100)`, `sku VARCHAR(20)`, `unit_cost_ratio DECIMAL(5,4)` | At least 100 products total, ~40 Gaming, ~30 Productivity, ~30 MPC |
-| `USER_SEGMENT_MAP` | `db_user VARCHAR(64)`, `segment_id INT FK→COMPANY_SEGMENT`; PK(db_user, segment_id) | analyst_demo→Gaming; analyst_all→all |
-| `CONFIG` | `config_key VARCHAR(64) PK`, `config_value VARCHAR(255) NOT NULL` | Runtime key-value store; DB_ALLOCATED_MB and AT_RISK_FACTOR seeded here |
+| `PRODUCT` | `product_id INT PK AUTO_INCREMENT`, `segment_id INT FK→COMPANY_SEGMENT`, `name VARCHAR(100)`, `sku VARCHAR(20)`, `unit_cost_ratio DECIMAL(5,4)` | At least 100 products total, distributed across PBP, IC, MPC segments |
+| `USER_SEGMENT_MAP` | `db_user VARCHAR(64)`, `segment_id INT FK→COMPANY_SEGMENT`; PK(db_user, segment_id) | analyst_demo→MPC (pending owner decision on Q3 from MARGIN_DB.md §12.4); analyst_all→all |
+| `CONFIG` | `config_key VARCHAR(64) PK`, `config_value VARCHAR(255) NOT NULL` | Runtime key-value store. Keys seeded: DB_ALLOCATED_MB, AT_RISK_FACTOR, EVENT_PRE_MONTHS=3, EVENT_POST_MONTHS=3, BASELINE_MONTHS=3, MIN_BASELINE_MONTHS=3, FORECAST_LIFT_MONTHS=3. All lift/forecast code reads these from CONFIG; never hardcode. |
 
 #### Sales and Financial Tables
 
@@ -232,10 +232,11 @@ def call_sp_out(conn, sp_name: str, in_params: list, out_count: int):
 
 | Table | Key Columns | Notes |
 |-------|-------------|-------|
-| `BUSINESS_EVENT` | `event_id INT PK AUTO_INCREMENT`, `event_type VARCHAR(30)`, `name VARCHAR(200)`, `start_date DATE`, `end_date DATE`, `expected_lift DECIMAL(5,4)`, `source_url VARCHAR(500)` | |
-| `STEAM_PLAYER` | `sp_id BIGINT PK AUTO_INCREMENT`, `app_id INT`, `obs_date DATE`, `avg_players INT UNSIGNED`, `peak_players INT UNSIGNED` | UNIQUE(app_id, obs_date) |
-| `EVENT_WINDOW_DAY` | `event_id INT FK→BUSINESS_EVENT`, `day_offset SMALLINT`; PK(event_id, day_offset) | Weak entity; offsets -14..+30; lift_ratio DECIMAL(8,4) NULL |
+| `BUSINESS_EVENT` | `event_id INT PK AUTO_INCREMENT`, `event_type VARCHAR(30)`, `name VARCHAR(200)`, `start_date DATE`, `end_date DATE`, `expected_lift DECIMAL(5,4)`, `steam_app_id INT NULL`, `source_url VARCHAR(500)` | steam_app_id links to STEAM_PLAYER.app_id for game-launch events; NULL for non-Steam events (Black Friday, price changes, etc.) — events with NULL steam_app_id get NULL lift_ratio and bypass the Steam path entirely |
+| `STEAM_PLAYER` | `sp_id BIGINT PK AUTO_INCREMENT`, `app_id INT`, `obs_date DATE`, `avg_players DECIMAL(12,2) NULL`, `peak_players INT UNSIGNED` | UNIQUE(app_id, obs_date); avg_players is DECIMAL — source CSV has fractional values (e.g. 103689.35); INT UNSIGNED would silently truncate |
+| `EVENT_WINDOW_MONTH` | `event_id INT FK→BUSINESS_EVENT`, `month_offset SMALLINT`; PK(event_id, month_offset) | Weak entity; offsets −EVENT_PRE_MONTHS..+EVENT_POST_MONTHS (default −3..+3); `avg_players DECIMAL(12,2) NULL`; `lift_ratio DECIMAL(10,4) NULL`. Offset 0 = calendar month of event start_date. lift_ratio = NULL when fewer than MIN_BASELINE_MONTHS (3) baseline months exist; never zero, never interpolated. |
 | `GOOGLE_TREND` | `gt_id INT PK AUTO_INCREMENT`, `keyword VARCHAR(200)`, `obs_date DATE`, `interest_score TINYINT UNSIGNED` | |
+| `GAMING_REVENUE_SERIES` | `grs_id INT PK AUTO_INCREMENT`, `fiscal_year SMALLINT NOT NULL`, `fiscal_quarter TINYINT NOT NULL`, `revenue_m DECIMAL(12,2) NOT NULL`, `operating_income DECIMAL(12,2) NULL`, `months_label VARCHAR(40) NULL`, `source_url VARCHAR(500) NOT NULL`, `loaded_at DATETIME(3)` | UNIQUE KEY (fiscal_year, fiscal_quarter). Source: segments.csv. Values in millions USD. operating_income always NULL (Gaming OI not separately disclosed — never estimated). months_label preserves the "Months" reference column from segments.csv. NOT a COMPANY_SEGMENT row. Gaming sits inside MPC; this table is separate to avoid double-counting. |
 
 #### Intelligence and Monitoring Tables
 
@@ -321,29 +322,64 @@ Signature: sp_forecast_business(IN p_event_id INT UNSIGNED)
 Session variable: @as_of_date (NULL → CURDATE())
 
 Logic:
-  1. baseline_daily_revenue = AVG daily revenue from QUARTERLY_FINANCIALS
-     for the trailing 4 quarters before @as_of_date for Gaming segment
-  2. event_days = DATEDIFF(end_date, start_date) + 1 from BUSINESS_EVENT
-  2a. Verify the event's segment (or the Gaming segment) is in the caller's
-      USER_SEGMENT_MAP entries using the same pattern as sp_margin_decomposition;
+  0. Read CONFIG keys (all code uses CONFIG, never hardcoded values):
+       EVENT_PRE_MONTHS, EVENT_POST_MONTHS, BASELINE_MONTHS,
+       MIN_BASELINE_MONTHS, FORECAST_LIFT_MONTHS
+
+  1. baseline_monthly_revenue = AVG monthly revenue from QUARTERLY_FINANCIALS
+     for the trailing 4 quarters before @as_of_date
+     (across PBP/IC/MPC as applicable to the caller's USER_SEGMENT_MAP)
+
+  2. event_duration_months = PERIOD_DIFF(
+       DATE_FORMAT(end_date, '%Y%m'),
+       DATE_FORMAT(start_date, '%Y%m')
+     ) + 1 from BUSINESS_EVENT
+
+  2a. Verify the event's segment is in the caller's USER_SEGMENT_MAP entries
+      using the same pattern as sp_margin_decomposition;
       if not permitted, return empty result set.
-  3. IF EVENT_WINDOW_DAY rows exist for p_event_id AND lift_ratio IS NOT NULL:
-       event_lift = AVG(lift_ratio) - 1   [only over non-NULL rows]
-       (Steam player-count lift as proxy for revenue lift;
-        proxy assumption documented in docs/MARGIN_DB.md)
-     ELSE IF BUSINESS_EVENT.expected_lift IS NOT NULL:
-       event_lift = expected_lift - 1
-     ELSE:
-       event_lift = 0
-  4. projected_revenue_impact = baseline_daily_revenue × event_days × event_lift
+
+  3. Lift source selection (monthly, CONFIG-driven):
+     a. IF BUSINESS_EVENT.steam_app_id IS NOT NULL
+        AND EVENT_WINDOW_MONTH rows exist for p_event_id
+        AND at least one lift_ratio IS NOT NULL at offsets
+            0..(FORECAST_LIFT_MONTHS - 1)  (i.e. offsets 0, 1, 2):
+          measured_lift = AVG(lift_ratio at those offsets WHERE lift_ratio IS NOT NULL)
+          event_lift    = measured_lift - 1
+          lift_source   = 'measured'
+
+          (Steam monthly player-count lift as proxy for revenue lift;
+           proxy assumption documented in docs/MARGIN_DB.md §19.
+           Baseline for lift_ratio = mean avg_players of the BASELINE_MONTHS
+           months immediately before offset 0; NULL if < MIN_BASELINE_MONTHS
+           baseline months exist — see compute_event_windows.py.)
+
+     b. ELSE IF BUSINESS_EVENT.expected_lift IS NOT NULL:
+          event_lift  = expected_lift - 1
+          lift_source = 'expected_lift'
+
+     c. ELSE:
+          event_lift  = 0
+          lift_source = 'zero_fallback'
+
+  4. projected_revenue_impact =
+       baseline_monthly_revenue × event_duration_months × event_lift
+
   5. confidence_tier:
-       high   = all three inputs present (baseline, event_lift from window, event dates)
+       high   = all three inputs present (baseline, lift from window, event dates)
        medium = two inputs present
        low    = 0 or 1 inputs present
+
   6. Write FORECAST (kind='business', event_id, as_of_date)
-     Write FORECAST_LINE rows: baseline_daily_revenue, event_lift, event_days,
-                               projected_revenue_impact, confidence_tier
+     Write FORECAST_LINE rows: baseline_monthly_revenue, event_lift,
+       event_duration_months, projected_revenue_impact, confidence_tier,
+       lift_source (records which of 'measured'/'expected_lift'/'zero_fallback'
+       was used — required for auditability)
+
   7. SELECT from FORECAST JOIN FORECAST_LINE for this forecast_id
+
+  NOTE: No Gaming-specific segment references. No Gaming cost, margin, or
+  operating income anywhere in this procedure.
 ```
 
 ### sp_forecast_database
@@ -656,12 +692,12 @@ load_sales.sh (orchestrator)
   4. load_trends.py           → GOOGLE_TREND
   [HUMAN STEP: confirm events.csv present]
   5. load_events.py           → BUSINESS_EVENT
-  6. compute_event_windows.py → EVENT_WINDOW_DAY (game_launch events only; after load_events.py)
+  6. compute_event_windows.py → EVENT_WINDOW_MONTH (game_launch events with non-NULL steam_app_id only; monthly offsets; after load_events.py)
   7. gen_synthetic_sales.py   → CSV chunks in data/clean/
      [HUMAN STEP: confirm drop BEFORE INSERT trigger for bulk load]
   8. LOAD DATA LOCAL INFILE loop (chunk by chunk)
      [HUMAN STEP: confirm trigger recreated after load]
-  9. reconciliation check (three independent groups: Gaming, MPC, Productivity+Cloud)
+  9. reconciliation check (three independent groups: PBP, IC, MPC — no Gaming group; Gaming is inside MPC)
  10. backfill_snapshots.py    → DB_SIZE_SNAPSHOT (90 synthetic rows)
  11. UPDATE CONFIG set DB_ALLOCATED_MB = computed_value
 ```
@@ -684,16 +720,37 @@ load_sales.sh (orchestrator)
 
 ```python
 # Separate script run after load_events.py
-# Only processes game_launch event types (not all events)
-# For each game_launch BUSINESS_EVENT:
-#   window = days from (start_date - 14) to (start_date + 30) → offsets -14..+30
-#   For each day in the event window:
-#     avg_players = from STEAM_PLAYER for that obs_date
-#     pre_avg = AVG(avg_players) for 14 days before start_date
-#     lift_ratio = avg_players / pre_avg  (NULL if no data)
-#   INSERT IGNORE into EVENT_WINDOW_DAY (event_id, day_offset, lift_ratio)
-# AVG(lift_ratio) is computed only when IS NOT NULL (at least one data point exists)
-# lift_ratio is computed for event window days only
+# Only processes game_launch events WHERE steam_app_id IS NOT NULL
+# Reads CONFIG keys from DB: EVENT_PRE_MONTHS, EVENT_POST_MONTHS,
+#   BASELINE_MONTHS, MIN_BASELINE_MONTHS  (never hardcoded)
+#
+# For each qualifying BUSINESS_EVENT:
+#   offset_0_month = calendar month of start_date (YYYY-MM)
+#   window_months  = offset_0_month - EVENT_PRE_MONTHS .. offset_0_month + EVENT_POST_MONTHS
+#                    (i.e. offsets -3 .. +3 with default CONFIG values)
+#
+#   baseline_months = the BASELINE_MONTHS (3) calendar months immediately before offset 0
+#                     i.e. offsets -BASELINE_MONTHS .. -1  (offsets -3, -2, -1)
+#   IF all MIN_BASELINE_MONTHS (3) baseline months exist in STEAM_PLAYER for this app_id:
+#     baseline_avg = AVG(avg_players for those months)
+#   ELSE:
+#     baseline_avg = NULL
+#     log missing months to stdout AND to data/clean/lift_warnings_<event_id>.log
+#
+#   For each month_offset in window:
+#     target_month = offset_0_month + month_offset
+#     avg_players  = STEAM_PLAYER.avg_players WHERE app_id=steam_app_id
+#                    AND obs_date = first day of target_month
+#                    (NULL if no row; never treated as 0, never interpolated)
+#     IF baseline_avg IS NOT NULL AND avg_players IS NOT NULL:
+#       lift_ratio = avg_players / baseline_avg
+#     ELSE:
+#       lift_ratio = NULL
+#
+#   INSERT IGNORE into EVENT_WINDOW_MONTH
+#     (event_id, month_offset, avg_players, lift_ratio)
+#
+# Log count of rows inserted per event
 ```
 
 ### gen_synthetic_sales.py
@@ -704,19 +761,22 @@ load_sales.sh (orchestrator)
 # is_synthetic = TRUE (column DEFAULT; no need to set explicitly)
 # RNG seeded from SYNTHETIC_SEED env var (default 42)
 #
-# Reconciliation — three independent groups:
-#   Gaming: SUM(gross_amount) vs QUARTERLY_FINANCIALS.revenue for Gaming segment
-#   More Personal Computing (excl. Gaming): reconcile independently
-#   Productivity and Business Cloud: reconcile independently
+# Reconciliation — three independent groups (PBP, IC, MPC):
+#   Productivity and Business Processes (PBP): SUM(gross_amount) vs QUARTERLY_FINANCIALS
+#   Intelligent Cloud (IC): reconcile independently
+#   More Personal Computing (MPC): reconcile independently (Gaming is inside MPC;
+#     DO NOT create a separate Gaming reconciliation group — that would double-count)
 #   tolerance: 0.1% per (fiscal_year, fiscal_quarter, segment_id) combination
 #   ABORT if any combination exceeds 0.1%
 #   Print reconciliation report to stdout
 #
+# No Gaming cost, no Gaming operating income, no Gaming margin computation.
+# unit_cost and cost_amount apply only to PBP/IC/MPC products.
+#
 # Device mix: Xbox 40%, Windows PC 35%, Mobile 15%, Cloud 5%, Mac 5%
 # oem non-null only for Windows PC rows
-# unit_cost = unit_price × cost_ratio_for_segment (documented in docs/MARGIN_DB.md)
 # Seasonality: Black Friday rows × 3, December rows × 1.5
-# Event windows: apply lift from EVENT_WINDOW_DAY during event periods
+# Event windows: apply lift from EVENT_WINDOW_MONTH during event periods
 #
 # FK values (product_id, device_id, region_id, channel_id) pre-loaded from DB
 # CSV chunks written to data/clean/sales_chunk_NNN.csv
@@ -1208,12 +1268,11 @@ data/clean/
 data/raw/msft_facts.json
 .venv/
 dist/
-*.sql
 !data/raw/events.csv
 !data/raw/segments.csv
 ```
 
-Note: `*.sql` ignores any SQL dump files that might be accidentally generated in the repo. mysqldump backup files are written outside the repository to `~/margin_db_backups/` to avoid large files in git history.
+Note: The former `*.sql` blanket rule has been removed — it incorrectly ignored all migration and DDL files. mysqldump backup files are written outside the repository to `~/margin_db_backups/` to avoid large files in git history. If dump files need to be excluded, add a targeted rule such as `backups/*.sql` or `data/raw/*.sql`.
 
 ---
 
@@ -1271,7 +1330,7 @@ Note: `*.sql` ignores any SQL dump files that might be accidentally generated in
 
 ### Property 7: Segment Row Filter Invariant
 
-*For all* queries through segment-filtered views (`v_sales`, `v_financials`) executed by `analyst_demo`, the result set SHALL contain only rows where `segment_id` corresponds to the Gaming segment as mapped in `USER_SEGMENT_MAP`. No rows from other segments SHALL appear in any result set returned to `analyst_demo`. Note: `v_my_queries` is filtered by `db_user` (per-user filter) not by segment.
+*For all* queries through segment-filtered views (`v_sales`, `v_financials`) executed by any demo user, the result set SHALL contain only rows where `segment_id` is in the set of segments mapped to that user in `USER_SEGMENT_MAP`. No rows from other segments SHALL appear. `analyst_demo`'s segment mapping is pending owner decision (see MARGIN_DB.md §12.4 Q3). Note: `v_my_queries` is filtered by `db_user` (per-user filter) not by segment.
 
 **Validates: Requirements 2.1, 2.7**
 
@@ -1283,8 +1342,8 @@ Note: `*.sql` ignores any SQL dump files that might be accidentally generated in
 |--------|-----------|-----------|
 | fetch_edgar.py | HTTP 200 from SEC EDGAR companyfacts endpoint; Q4 derivable from FY annual | Log UTC+URL; exit 1 |
 | load_financials.py | All three metrics present; fiscal quarter frame only | Skip period; log |
-| load_steam.py | obs_date ISO 8601; avg_players / peak_players non-negative int | Skip row; log identifier/field/expected/actual |
+| load_steam.py | obs_date ISO 8601 AND must be 1st of month; avg_players non-negative **decimal** (DECIMAL(12,2)); peak_players non-negative integer | Skip row; log identifier/field/expected/actual |
 | load_trends.py | pytrends available or manual CSV present | Log rate-limit; fall back; exit 1 if neither |
 | load_events.py | source_url non-null; end_date >= start_date; event_type in ENUM; future game_launch | Skip row; log; warn if no future event |
-| compute_event_windows.py | game_launch events only; STEAM_PLAYER rows present; lift_ratio IS NOT NULL for at least one window day | Set lift_ratio = NULL for missing days; log count per event |
+| compute_event_windows.py | game_launch events with non-NULL steam_app_id only; reads EVENT_PRE_MONTHS, EVENT_POST_MONTHS, BASELINE_MONTHS, MIN_BASELINE_MONTHS from CONFIG; lift_ratio NULL when fewer than MIN_BASELINE_MONTHS baseline months exist; missing months logged to stdout and data/clean/lift_warnings_<event_id>.log | Set lift_ratio = NULL for insufficient baseline; never zero or interpolated; log per event |
 | gen_synthetic_sales.py | Reconciliation within 0.1% per (fy, fq, segment_id) for three independent groups | Print report; ABORT |

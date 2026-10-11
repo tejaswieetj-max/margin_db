@@ -1,0 +1,17 @@
+fiscal_year,fiscal_quarter,segment,revenue (in million dollars),operating_income,source_url,Months
+2023,1,Gaming,3610,,https://microsoft.gcs-web.com/node/31051/html,Jul 2022 to Sep 2022
+2023,2,Gaming,4758,,https://microsoft.gcs-web.com/node/31271/html,Oct 2022 to Dec 2022
+2023,3,Gaming,3607,,https://microsoft.gcs-web.com/node/31516/html,Jan 2023 to Mar 2023
+2023,4,Gaming,3491,,https://microsoft.gcs-web.com/node/31736/html,Apr 2023 to Jun 2023
+2024,1,Gaming,3919,,https://microsoft.gcs-web.com/node/32006/html,Jul 2023 to Sep 2023
+2024,2,Gaming,7111,,https://microsoft.gcs-web.com/node/32336/html,Oct 2023 to Dec 2023
+2024,3,Gaming,5451,,https://microsoft.gcs-web.com/node/32601/html,Jan 2024 to mar 2024
+2024,4,Gaming,5022,,https://microsoft.gcs-web.com/node/32871/html,Apr 2024 to Jun 2024
+2025,1,Gaming,5621,,https://microsoft.gcs-web.com/node/33181/html,Jul 2024 to Sep 2024
+2025,2,Gaming,6581,,https://microsoft.gcs-web.com/node/33446/html,Oct 2024 to Dec 2024
+2025,3,Gaming,5721,,https://microsoft.gcs-web.com/node/33661/html,Jan 2025 to Mar 2025
+2025,4,Gaming,5532,,https://microsoft.gcs-web.com/node/33951/html,Apr 2025 to Jun 2025
+2026,1,Gaming,5508,,https://microsoft.gcs-web.com/node/34236/html,Jul 2025 to Sep 2025
+2026,2,Gaming,5958,,https://microsoft.gcs-web.com/node/34551/html,Oct 2025 to Dec 2025
+2026,3,Gaming,5341,,https://microsoft.gcs-web.com/node/34791/html,Jan 2026 to Mar 2026
+2026,4,Gaming,4983,,https://microsoft.gcs-web.com/node/35106/html,Apr 2026 to Jun 2026

@@ -93,6 +93,8 @@ Partitioning (RANGE on date) · indexing and invisible-index testing · query-pl
 
 Engine InnoDB, charset utf8mb4. Types are indicative; adjust sensibly.
 
+**Unit convention (Stage 2 decision):** All financial values stored in this database are in **millions USD**. SEC EDGAR returns raw USD; `fetch_edgar.py` and `load_financials.py` must divide by 1,000,000 before inserting. `segments.csv` values are already in millions USD (header: "revenue (in million dollars)") and are inserted as-is. This applies to `QUARTERLY_FINANCIALS.revenue`, `.cogs`, `.operating_income` and `GAMING_REVENUE_SERIES.revenue_m`. Any derived or aggregated value displayed in the UI must state the unit (M USD).
+
 ### 8.1 Business tables
 
 **COMPANY_SEGMENT**: `segment_id TINYINT PK`, `name VARCHAR(50)`
@@ -109,15 +111,26 @@ Engine InnoDB, charset utf8mb4. Types are indicative; adjust sensibly.
 
 ### 8.2 Event and forecast tables
 
-**BUSINESS_EVENT**: `event_id PK`, `event_type` (game_launch / subscription_promo / seasonal / price_change / acquisition / outage), `name`, `start_date`, `end_date`, `expected_lift`, `source_url NOT NULL`
-**EVENT_WINDOW_DAY** *(weak entity, owner BUSINESS_EVENT)*: **PK (event_id, day_offset)**, `players_index`, `lift_ratio` (real Steam uplift, day offsets −14..+30)
+**BUSINESS_EVENT**: `event_id PK`, `event_type` (game_launch / subscription_promo / seasonal / price_change / acquisition / outage), `name`, `start_date`, `end_date`, `expected_lift`, `steam_app_id INT NULL` (added in migration 08), `source_url NOT NULL`. Events with `steam_app_id IS NULL` (e.g. Black Friday, price changes) receive NULL lift_ratio and do not enter the Steam lift path.
+
+**EVENT_WINDOW_MONTH** *(weak entity, owner BUSINESS_EVENT — renamed from EVENT_WINDOW_DAY in migration 08)*: **PK (event_id, month_offset)**, `avg_players DECIMAL(12,2) NULL`, `lift_ratio DECIMAL(10,4) NULL`. Month offset range: −EVENT_PRE_MONTHS..+EVENT_POST_MONTHS (both = 3 by default; see CONFIG). Offset 0 = the calendar month containing the event's start_date. lift_ratio is NULL when fewer than MIN_BASELINE_MONTHS (= 3) preceding months exist in STEAM_PLAYER; never estimated or zeroed.
+
 **FORECAST**: `forecast_id PK`, `kind ENUM('business','database')`, `event_id FK`, `created_at`, `created_by`
 **FORECAST_LINE** *(weak entity, owner FORECAST)*: **PK (forecast_id, line_no)**, `metric`, `period`, `value`
 
+### 8.2a Gaming revenue series (separate table, not a segment)
+
+**GAMING_REVENUE_SERIES**: `grs_id PK AI`, `fiscal_year`, `fiscal_quarter`, `revenue_m DECIMAL(12,2) NOT NULL`, `operating_income DECIMAL(12,2) NULL` (always NULL — Gaming OI not separately disclosed), `months_label VARCHAR(40) NULL` (reference metadata, e.g. "Jul 2022 to Sep 2022"), `source_url VARCHAR(500) NOT NULL`, `loaded_at DATETIME(3)`. UNIQUE KEY on `(fiscal_year, fiscal_quarter)`.
+
+**Why a separate table:** Gaming is a product line inside the More Personal Computing segment, not a standalone reporting segment. Inserting Gaming into `QUARTERLY_FINANCIALS` would require either a spurious fourth segment or would double-count revenue against MPC. `GAMING_REVENUE_SERIES` isolates the product-line series cleanly. It is never joined into segment-level reconciliation.
+
+**Derivation note:** "Rest of MPC" revenue (MPC total minus Gaming) is a **derived** figure, never a reported one. It must be labelled "derived" in any report or view that uses it and must never be stored as if it were sourced data.
+
 ### 8.3 Real external data tables
 
-**QUARTERLY_FINANCIALS**: **PK (fiscal_year, fiscal_quarter, segment_id)**, `revenue`, `cogs`, `operating_income NULL`, `source`
-**STEAM_PLAYER**: `app_id`, `obs_date`, `avg_players`, `peak_players` (PK app_id + obs_date)
+**QUARTERLY_FINANCIALS**: **PK (qf_id AI)**, `fiscal_year`, `fiscal_quarter`, `segment_id FK`, `revenue DECIMAL(15,2)`, `cogs DECIMAL(15,2)`, `operating_income DECIMAL(15,2) NULL`, `filed_date DATE`. Covers the three official Microsoft reporting segments: Productivity and Business Processes (PBP), Intelligent Cloud (IC), More Personal Computing (MPC). Values in **millions USD**. [OPEN: PBP/IC/MPC source — see Section 12.4 open question.]
+
+**STEAM_PLAYER**: `sp_id BIGINT PK AI`, `app_id INT`, `obs_date DATE`, `avg_players DECIMAL(12,2) NULL` (monthly avg concurrent players; **decimal precision required**), `peak_players INT UNSIGNED NULL`. UNIQUE KEY on `(app_id, obs_date)`. Five app IDs in the dataset: 1938090 (Call of Duty), 1172620 (Sea of Thieves), 1240440 (Halo Infinite), 1551360 (Forza Horizon 5), 1716740 (Starfield).
 
 ### 8.4 Database-intelligence tables
 
@@ -133,12 +146,12 @@ Engine InnoDB, charset utf8mb4. Types are indicative; adjust sensibly.
 1. `ORDER_ITEM`, identified by (order_id, line_no), owner `ORDERS`
 2. `QUERY_PLAN_NODE`, identified by (qe_id, node_id), owner `QUERY_EXECUTION`
 3. `FORECAST_LINE`, identified by (forecast_id, line_no), owner `FORECAST`
-4. `EVENT_WINDOW_DAY`, identified by (event_id, day_offset), owner `BUSINESS_EVENT`
+4. `EVENT_WINDOW_MONTH`, identified by (event_id, month_offset), owner `BUSINESS_EVENT` *(renamed from EVENT_WINDOW_DAY in migration 08)*
 
 Owner tables of weak entities must not be partitioned.
 
 ### 8.6 Main relationships
-COMPANY_SEGMENT 1—N PRODUCT · ORDERS 1—N ORDER_ITEM · PRODUCT 1—N ORDER_ITEM · BUSINESS_EVENT 1—N EVENT_WINDOW_DAY · BUSINESS_EVENT 1—N FORECAST · FORECAST 1—N FORECAST_LINE · QUERY_EXECUTION 1—N QUERY_PLAN_NODE · QUERY_EXECUTION 1—N INDEX_RECOMMENDATION · PRODUCT 1—N PRICING_RULE · FACT_SALES logically references PRODUCT, segment, device, region, channel, event (enforced by trigger, not FK).
+COMPANY_SEGMENT 1—N PRODUCT · ORDERS 1—N ORDER_ITEM · PRODUCT 1—N ORDER_ITEM · BUSINESS_EVENT 1—N EVENT_WINDOW_MONTH · BUSINESS_EVENT 1—N FORECAST · FORECAST 1—N FORECAST_LINE · QUERY_EXECUTION 1—N QUERY_PLAN_NODE · QUERY_EXECUTION 1—N INDEX_RECOMMENDATION · PRODUCT 1—N PRICING_RULE · FACT_SALES logically references PRODUCT, segment, device, region, channel, event (enforced by trigger, not FK).
 
 ## 9. Roles, accounts, and access
 
@@ -161,7 +174,7 @@ COMPANY_SEGMENT 1—N PRODUCT · ORDERS 1—N ORDER_ITEM · PRODUCT 1—N ORDER_
 | Object | Purpose |
 |---|---|
 | `sp_margin_decomposition(segment, period_a, period_b)` | Volume / price / discount / mix effects |
-| `sp_forecast_business(event_id)` | Applies event lift to baseline; writes FORECAST + FORECAST_LINE |
+| `sp_forecast_business(event_id)` | Applies monthly event lift to baseline; writes FORECAST + FORECAST_LINE. Reads EVENT_PRE_MONTHS, EVENT_POST_MONTHS, BASELINE_MONTHS, MIN_BASELINE_MONTHS, FORECAST_LIFT_MONTHS from CONFIG. Forecast lift = AVG(lift_ratio at offsets 0..FORECAST_LIFT_MONTHS-1) − 1; falls back to expected_lift − 1 if no non-NULL lift rows exist; falls back to 0 if neither. Records which source was used in FORECAST_LINE. |
 | `sp_forecast_database(event_id)` | Growth from DB_SIZE_SNAPSHOT × event lift; linear regression via SUM/COUNT; writes days-to-90% and at-risk digests |
 | `sp_update_pricing_rule(rule_id, new_value, expected_version)` | Optimistic lock: `UPDATE … WHERE version=?`; if `ROW_COUNT()=0` → CONFLICT_LOG + `SIGNAL SQLSTATE '45000'` |
 | `sp_place_order(...)` | `START TRANSACTION` + `SAVEPOINT`; `ROLLBACK TO` on failure; inserts ORDERS, ORDER_ITEM, FACT_SALES |
@@ -192,17 +205,18 @@ Other requirements: CORS for the Vite dev origin only; consistent error JSON; Op
 
 | Data | Source | Notes |
 |---|---|---|
-| Microsoft quarterly financials (revenue, COGS, operating income) | SEC EDGAR: `https://data.sec.gov/api/xbrl/companyfacts/CIK0000789019.json` | **Must send a `User-Agent` header** (name + email) or SEC rejects. Use quarterly, not cumulative/annual; take latest filed value per period for restatements. |
-| Gaming / segment revenue split | Microsoft quarterly earnings releases, 10-Q/10-K, IR spreadsheets | **Manual transcription** into `data/raw/segments.csv` (`fiscal_year, fiscal_quarter, segment, revenue, operating_income, source_url`). Gaming is not a standalone reported segment for operating income; leave blank where undisclosed. Microsoft recast its segments in 2024. Never estimate. |
-| Steam player counts (Call of Duty) | Kaggle Steam player-count dataset, or steamcharts.com export **[OPEN: verify app ID and terms of use]** | `data/raw/steam_players.csv`. Daily needed for −14/+30 day launch curves; if only monthly exists, use month offsets. |
+| Microsoft quarterly financials (revenue, COGS, operating income) | SEC EDGAR: `https://data.sec.gov/api/xbrl/companyfacts/CIK0000789019.json` | **Must send a `User-Agent` header** (name + email) or SEC rejects. Use quarterly, not cumulative/annual; take latest filed value per period for restatements. Values returned in **raw USD**; divide by 1,000,000 before inserting into QUARTERLY_FINANCIALS (which stores millions USD). |
+| Gaming product-line revenue | Microsoft quarterly earnings releases, 10-Q/10-K, IR spreadsheets | **Manual transcription** into `data/raw/segments.csv`. Header: `fiscal_year, fiscal_quarter, segment, revenue (in million dollars), operating_income, source_url, Months`. Values already in millions USD; insert as-is. operating_income blank for Gaming (not separately disclosed). Months column preserved as `months_label` in GAMING_REVENUE_SERIES. |
+| PBP / IC / MPC segment revenue | **[OPEN — see Section 12.4]** | EDGAR companyfacts does not reliably provide the three-segment breakdown. A second human-provided CSV is proposed. |
+| Steam player counts (Call of Duty, Sea of Thieves, Halo Infinite, Forza Horizon 5, Starfield) | steam_players.csv (monthly; 5 app IDs verified via store.steampowered.com) | `data/raw/steam_players.csv`. Monthly data → month-offset lift window. avg_players is DECIMAL (not INT); store as DECIMAL(12,2). |
 | Google Trends | `pytrends` for "Call of Duty", "Game Pass", "Xbox price"; manual CSV fallback | Rate-limit prone. |
-| Event calendar | **Hand-curated** `data/raw/events.csv`, 40–60 rows | Sources: Wikipedia (CoD release dates), Xbox Wire (Game Pass/console price changes), Black Friday dates, Activision acquisition close (Oct 13, 2023; verify). Every row needs `source_url`. |
+| Event calendar | **Hand-curated** `data/raw/events.csv` | Columns: `event_type, name, start_date, end_date, expected_lift, steam_app_id, source_url`. Unverifiable rows go to `events_unverified_review.csv`. Every row needs `source_url`. |
 
 ### 12.2 Synthetic (explicit project decision)
 
 | Data | Rule |
 |---|---|
-| Transaction-grain sales (FACT_SALES, ORDERS, ORDER_ITEM) | 2–5M rows so full scans are real. All flagged `is_synthetic=TRUE`. Seeded RNG. **Per quarter per segment, synthetic revenue must reconcile to real QUARTERLY_FINANCIALS within 0.1%** (printed report). Apply real event lifts from EVENT_WINDOW_DAY; Black Friday/holiday seasonality; device mix with OEM only on PC rows. |
+| Transaction-grain sales (FACT_SALES, ORDERS, ORDER_ITEM) | 2–5M rows so full scans are real. All flagged `is_synthetic=TRUE`. Seeded RNG. **Per quarter per segment, synthetic revenue must reconcile to real QUARTERLY_FINANCIALS within 0.1%** (printed report). Apply real event lifts from EVENT_WINDOW_MONTH (monthly offsets); Black Friday/holiday seasonality; device mix with OEM only on PC rows. |
 | DIM_DEVICE contents (platform/OEM) | Synthetic; Microsoft does not publish device-level sales. |
 | 90-day DB_SIZE_SNAPSHOT backfill | Synthetic growth curve flagged `is_synthetic`, so the regression has history; live snapshots take over. |
 
@@ -211,7 +225,34 @@ Everything else (query plans, timings, sizes after load) is **real measurement**
 ### 12.3 Known data limits (state honestly in the report)
 - Microsoft publishes no transaction-level, per-title, per-device, discount or unit data. Margin analysis on real data is at **segment × quarter** grain.
 - Event-to-margin links on real data are quarterly; finer grain exists only in the synthetic layer.
-- Real Steam data covers only titles on Steam (Call of Duty since 2022).
+- Real Steam data covers only titles on Steam (Call of Duty since Oct 2022; Starfield since Sep 2023; Sea of Thieves, Halo Infinite, Forza Horizon 5 have earlier Steam presence but CSV data starts Oct 2022).
+- "Rest of MPC" (MPC minus Gaming) is a **derived** figure — never reported by Microsoft — and must be labelled as such in every view and report that surfaces it.
+- Gaming operating income is not reported; `operating_income` in GAMING_REVENUE_SERIES is always NULL. No Gaming margin is computed or displayed.
+
+### 12.4 Open questions (require owner decision before Phase C)
+
+**Q1 — PBP/IC/MPC revenue source:**
+EDGAR companyfacts (`us-gaap.Revenues`) returns company-wide totals, not the three segment splits. Options:
+- **Option A (recommended):** Owner provides a second CSV (`data/raw/segment_financials.csv`) transcribed from the segment tables in Microsoft's 10-Q/10-K filings (Section "Segment Results"). Columns: `fiscal_year, fiscal_quarter, segment_name, revenue_m, cogs_m, operating_income_m, source_url`.
+- **Option B:** Load EDGAR company-wide revenue into QUARTERLY_FINANCIALS for a single "Microsoft Total" segment, and acknowledge that segment-level decomposition is unavailable from real data.
+
+Which option do you prefer?
+
+**Q2 — Margin / cost for the three reporting segments:**
+The old design used synthetic `unit_cost` ratios to approximate segment COGS. Options:
+- **Option A (recommended):** Use real segment operating income from 10-Q/10-K (sourced via Option A above). Gross margin = revenue − COGS (if COGS is disclosed at segment level; Microsoft publishes "Gross margin" per segment in its earnings releases). Label it "real sourced" in the report.
+- **Option B:** Keep synthetic cost ratios per segment, clearly labelled "synthetic approximation" in every view, report, and MARGIN_DB.md. `unit_cost_ratio` on PRODUCT stays. No cost or margin for Gaming in any option.
+- **Option C:** Hybrid — use real gross margin where Microsoft discloses it (PBP, IC, MPC) and synthetic cost ratios only as a fallback.
+
+No Gaming cost or margin in any option.
+
+**Q3 — analyst_demo and the heavy query without Gaming as a segment:**
+`analyst_demo` is currently mapped to the "Gaming" segment in USER_SEGMENT_MAP. Since Gaming is no longer a COMPANY_SEGMENT row (it is in GAMING_REVENUE_SERIES), the segment filter in `v_sales` and `v_financials` will return no rows for `analyst_demo`. Options:
+- **Option A:** Remap `analyst_demo` → MPC segment. The heavy demo query runs on MPC synthetic sales. Gaming revenue is visible via a separate `v_gaming_revenue` view.
+- **Option B:** Keep a synthetic "Gaming" row in COMPANY_SEGMENT (segment_id only; never a row in QUARTERLY_FINANCIALS), so `analyst_demo` still scopes to Gaming-tagged FACT_SALES rows. GAMING_REVENUE_SERIES remains separate for real sourced data.
+- **Option C:** Change `analyst_demo`'s persona to "MPC analyst" and update the demo script accordingly.
+
+Which option do you prefer?
 
 ## 13. Packages and installs
 
@@ -309,7 +350,39 @@ After each stage the agent writes `docs/stage_N_report.md`, commits to git, and 
 - Synthetic reconciliation must be done early; everything downstream depends on it.
 - Stitch export quality and Kaggle/SteamCharts availability are unverified.
 
-## 19. Rules for any agent working on this project
+## 19. ETL: Q4 Derivation Method and Gaps
+
+### Q4 derivation
+
+Microsoft does not always file a standalone 10-Q for Q4 because its annual 10-K implicitly covers the full fiscal year. `etl/fetch_edgar.py` handles this as follows:
+
+1. **Annual anchor**: For each fiscal year, the entry with `fp="FY"` or `form="10-K"` (and the latest `filed` date, to handle restatements) provides the full-year value.
+2. **Derivation formula**: `Q4 = FY_annual_value − (Q1_value + Q2_value + Q3_value)`, where Q1–Q3 values are the latest-filed quarterly frames for that fiscal year.
+3. **Derived rows** are tagged internally (`"derived": True`) but appear in the output with `filed_date` set to the annual filing's filed date.
+4. **Deduplication**: For every `(fiscal_year, fp)` pair, only the entry with the latest `filed` date is kept; this ensures that restated filings replace earlier versions.
+
+### Known gaps
+
+- If the FY annual entry is absent for a given metric and fiscal year, Q4 cannot be derived. The script logs a warning and prints the gap to stdout.
+- If any of Q1, Q2, or Q3 is missing for a fiscal year, Q4 derivation is skipped for that year and metric; the gap is printed to stdout.
+- Derived Q4 values may be negative for metrics where the annual figure was revised downward relative to the quarterly sum (e.g., reclassification restatements). These are kept as-is; the loader should validate them.
+
+### Proxy assumption (Steam lift — monthly)
+
+`sp_forecast_business` uses Steam player-count lift (from `EVENT_WINDOW_MONTH.lift_ratio`) as a proxy for gaming revenue lift during a game-launch event. The assumption is: sustained higher concurrent player counts on Steam correlate with higher digital-sales and Game Pass conversion during the launch window. This proxy is an approximation; actual revenue response may differ due to physical-vs-digital mix, regional pricing, and platform exclusivity periods.
+
+**Monthly offset logic (replacing former day-offset logic):**
+- Offset 0 = the calendar month containing the event's `start_date`.
+- Stored window = −EVENT_PRE_MONTHS (= 3) to +EVENT_POST_MONTHS (= 3).
+- Baseline = mean of the BASELINE_MONTHS (= 3) months immediately before offset 0 (offsets −3, −2, −1). Computed only when all MIN_BASELINE_MONTHS (= 3) of those months are present in STEAM_PLAYER; otherwise lift_ratio = NULL.
+- When fewer than MIN_BASELINE_MONTHS baseline months exist, the missing months are logged to stdout AND to a log file under `data/clean/`. Missing months are never treated as zero and are never interpolated.
+- Forecast lift = AVG(non-NULL lift_ratio at offsets 0..FORECAST_LIFT_MONTHS-1, i.e. 0..+2) − 1. Falls back to `expected_lift − 1` if no measured lift exists. Falls back to 0 if neither. FORECAST_LINE records which source was used.
+
+All five CONFIG keys (EVENT_PRE_MONTHS, EVENT_POST_MONTHS, BASELINE_MONTHS, MIN_BASELINE_MONTHS, FORECAST_LIFT_MONTHS) are stored in the CONFIG table. All code reads them from CONFIG; they are never hardcoded.
+
+---
+
+## 20. Rules for any agent working on this project
 
 - No invented data. Real data comes only from the listed sources; synthetic data is only what Section 12.2 defines and is always flagged.
 - Ask before any destructive command. Never run the backend as root. No passwords in code or commits.

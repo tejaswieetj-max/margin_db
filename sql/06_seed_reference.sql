@@ -13,9 +13,14 @@
 -- 1. COMPANY_SEGMENT (3 rows)
 --    Uses INSERT IGNORE so re-runs are no-ops.
 -- ---------------------------------------------------------------------------
+-- Three official Microsoft reporting segments (PBP, IC, MPC).
+-- Gaming is a product line inside MPC, NOT a segment.
+-- NOTE: for fresh installs this seeds the correct three segments.
+-- For upgrades from a schema that had a 'Gaming' segment,
+-- run sql/migrations/09_fix_segments.sql first.
 INSERT IGNORE INTO COMPANY_SEGMENT (name) VALUES
-    ('Gaming'),
-    ('Productivity & Business Cloud'),
+    ('Productivity and Business Processes'),
+    ('Intelligent Cloud'),
     ('More Personal Computing');
 
 -- ---------------------------------------------------------------------------
@@ -168,9 +173,14 @@ INSERT IGNORE INTO DIM_CHANNEL (name) VALUES
 
 -- ---------------------------------------------------------------------------
 -- 6. PRODUCT — 101 products total
---    ~40 Gaming (unit_cost_ratio ≈ 0.35)
---    ~31 Productivity & Business Cloud (unit_cost_ratio ≈ 0.25)
---    ~30 More Personal Computing (unit_cost_ratio ≈ 0.40)
+--    40 Gaming products: segment=MPC, product_line='Gaming', unit_cost_ratio 0.35
+--       (Gaming sits inside MPC; product_line tag distinguishes them)
+--    31 PBP products: segment=PBP, unit_cost_ratio 0.25
+--    30 MPC (non-Gaming) products: segment=MPC, product_line NULL, unit_cost_ratio 0.40
+--
+--    unit_cost_ratio is SYNTHETIC ONLY — used by gen_synthetic_sales.py to
+--    compute FACT_SALES.cost_amount. It is never reported as real margin data.
+--    Gaming products: cost_amount is NULL in FACT_SALES (no Gaming cost disclosed).
 --
 --    Idempotent via INSERT IGNORE (SKU column has no unique constraint in DDL
 --    but product_id is AUTO_INCREMENT; on re-run, duplicate product_id rows
@@ -184,97 +194,98 @@ INSERT IGNORE INTO DIM_CHANNEL (name) VALUES
 --    so duplicate inserts are caught by the PK.
 -- ---------------------------------------------------------------------------
 
--- ---- Gaming segment (segment_id resolved at insert time via subquery) -----
--- ~40 products, unit_cost_ratio = 0.3500
+-- ---- Gaming products (segment=MPC, product_line='Gaming') -----
+-- 40 products; unit_cost_ratio synthetic only; cost_amount NULL in FACT_SALES
 
-INSERT INTO PRODUCT (product_id, segment_id, name, sku, unit_cost_ratio) VALUES
-  (1,  (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='Gaming'), 'Xbox Series X Console',                 'GX001', 0.3500),
-  (2,  (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='Gaming'), 'Xbox Series S Console',                 'GX002', 0.3500),
-  (3,  (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='Gaming'), 'Xbox One X Console',                    'GX003', 0.3500),
-  (4,  (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='Gaming'), 'Xbox One S Console',                    'GX004', 0.3500),
-  (5,  (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='Gaming'), 'Xbox Elite Wireless Controller Series 2','GX005', 0.3500),
-  (6,  (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='Gaming'), 'Xbox Wireless Controller',              'GX006', 0.3500),
-  (7,  (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='Gaming'), 'Game Pass Ultimate (1-Month)',          'GX007', 0.3500),
-  (8,  (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='Gaming'), 'Game Pass Ultimate (3-Month)',          'GX008', 0.3500),
-  (9,  (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='Gaming'), 'Game Pass Ultimate (12-Month)',         'GX009', 0.3500),
-  (10, (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='Gaming'), 'Xbox Game Pass PC (1-Month)',           'GX010', 0.3500),
-  (11, (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='Gaming'), 'Xbox Game Pass PC (3-Month)',           'GX011', 0.3500),
-  (12, (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='Gaming'), 'Halo Infinite',                        'GX012', 0.3500),
-  (13, (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='Gaming'), 'Halo Infinite — Campaign DLC',         'GX013', 0.3500),
-  (14, (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='Gaming'), 'Forza Horizon 5',                      'GX014', 0.3500),
-  (15, (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='Gaming'), 'Forza Horizon 5 — Premium Add-Ons Bundle','GX015', 0.3500),
-  (16, (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='Gaming'), 'Forza Motorsport (2023)',               'GX016', 0.3500),
-  (17, (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='Gaming'), 'Call of Duty: Modern Warfare III',     'GX017', 0.3500),
-  (18, (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='Gaming'), 'Call of Duty: Warzone (Season Pass)',  'GX018', 0.3500),
-  (19, (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='Gaming'), 'Call of Duty: Modern Warfare II',      'GX019', 0.3500),
-  (20, (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='Gaming'), 'Sea of Thieves',                       'GX020', 0.3500),
-  (21, (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='Gaming'), 'Sea of Thieves — Plunder Pass',        'GX021', 0.3500),
-  (22, (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='Gaming'), 'Minecraft Java & Bedrock Edition',     'GX022', 0.3500),
-  (23, (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='Gaming'), 'Minecraft Dungeons',                   'GX023', 0.3500),
-  (24, (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='Gaming'), 'Minecraft Legends',                    'GX024', 0.3500),
-  (25, (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='Gaming'), 'Starfield',                            'GX025', 0.3500),
-  (26, (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='Gaming'), 'Starfield — Premium Edition Upgrade',  'GX026', 0.3500),
-  (27, (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='Gaming'), 'Redfall',                              'GX027', 0.3500),
-  (28, (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='Gaming'), 'Hi-Fi Rush',                           'GX028', 0.3500),
-  (29, (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='Gaming'), 'Psychonauts 2',                        'GX029', 0.3500),
-  (30, (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='Gaming'), 'Age of Empires IV',                    'GX030', 0.3500),
-  (31, (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='Gaming'), 'Microsoft Flight Simulator 2024',      'GX031', 0.3500),
-  (32, (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='Gaming'), 'Microsoft Flight Simulator (2020)',    'GX032', 0.3500),
-  (33, (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='Gaming'), 'Gears 5',                              'GX033', 0.3500),
-  (34, (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='Gaming'), 'Gears Tactics',                        'GX034', 0.3500),
-  (35, (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='Gaming'), 'Ori and the Will of the Wisps',        'GX035', 0.3500),
-  (36, (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='Gaming'), 'Pentiment',                            'GX036', 0.3500),
-  (37, (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='Gaming'), 'Grounded',                             'GX037', 0.3500),
-  (38, (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='Gaming'), 'The Elder Scrolls Online (Base Game)', 'GX038', 0.3500),
-  (39, (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='Gaming'), 'Deathloop',                            'GX039', 0.3500),
-  (40, (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='Gaming'), 'Dishonored 2',                         'GX040', 0.3500)
+INSERT INTO PRODUCT (product_id, segment_id, name, sku, unit_cost_ratio, product_line) VALUES
+  (1,  (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='More Personal Computing'), 'Xbox Series X Console',                 'GX001', 0.3500, 'Gaming'),
+  (2,  (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='More Personal Computing'), 'Xbox Series S Console',                 'GX002', 0.3500, 'Gaming'),
+  (3,  (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='More Personal Computing'), 'Xbox One X Console',                    'GX003', 0.3500, 'Gaming'),
+  (4,  (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='More Personal Computing'), 'Xbox One S Console',                    'GX004', 0.3500, 'Gaming'),
+  (5,  (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='More Personal Computing'), 'Xbox Elite Wireless Controller Series 2','GX005', 0.3500, 'Gaming'),
+  (6,  (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='More Personal Computing'), 'Xbox Wireless Controller',              'GX006', 0.3500, 'Gaming'),
+  (7,  (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='More Personal Computing'), 'Game Pass Ultimate (1-Month)',          'GX007', 0.3500, 'Gaming'),
+  (8,  (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='More Personal Computing'), 'Game Pass Ultimate (3-Month)',          'GX008', 0.3500, 'Gaming'),
+  (9,  (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='More Personal Computing'), 'Game Pass Ultimate (12-Month)',         'GX009', 0.3500, 'Gaming'),
+  (10, (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='More Personal Computing'), 'Xbox Game Pass PC (1-Month)',           'GX010', 0.3500, 'Gaming'),
+  (11, (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='More Personal Computing'), 'Xbox Game Pass PC (3-Month)',           'GX011', 0.3500, 'Gaming'),
+  (12, (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='More Personal Computing'), 'Halo Infinite',                        'GX012', 0.3500, 'Gaming'),
+  (13, (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='More Personal Computing'), 'Halo Infinite — Campaign DLC',         'GX013', 0.3500, 'Gaming'),
+  (14, (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='More Personal Computing'), 'Forza Horizon 5',                      'GX014', 0.3500, 'Gaming'),
+  (15, (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='More Personal Computing'), 'Forza Horizon 5 — Premium Add-Ons Bundle','GX015', 0.3500, 'Gaming'),
+  (16, (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='More Personal Computing'), 'Forza Motorsport (2023)',               'GX016', 0.3500, 'Gaming'),
+  (17, (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='More Personal Computing'), 'Call of Duty: Modern Warfare III',     'GX017', 0.3500, 'Gaming'),
+  (18, (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='More Personal Computing'), 'Call of Duty: Warzone (Season Pass)',  'GX018', 0.3500, 'Gaming'),
+  (19, (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='More Personal Computing'), 'Call of Duty: Modern Warfare II',      'GX019', 0.3500, 'Gaming'),
+  (20, (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='More Personal Computing'), 'Sea of Thieves',                       'GX020', 0.3500, 'Gaming'),
+  (21, (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='More Personal Computing'), 'Sea of Thieves — Plunder Pass',        'GX021', 0.3500, 'Gaming'),
+  (22, (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='More Personal Computing'), 'Minecraft Java & Bedrock Edition',     'GX022', 0.3500, 'Gaming'),
+  (23, (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='More Personal Computing'), 'Minecraft Dungeons',                   'GX023', 0.3500, 'Gaming'),
+  (24, (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='More Personal Computing'), 'Minecraft Legends',                    'GX024', 0.3500, 'Gaming'),
+  (25, (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='More Personal Computing'), 'Starfield',                            'GX025', 0.3500, 'Gaming'),
+  (26, (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='More Personal Computing'), 'Starfield — Premium Edition Upgrade',  'GX026', 0.3500, 'Gaming'),
+  (27, (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='More Personal Computing'), 'Redfall',                              'GX027', 0.3500, 'Gaming'),
+  (28, (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='More Personal Computing'), 'Hi-Fi Rush',                           'GX028', 0.3500, 'Gaming'),
+  (29, (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='More Personal Computing'), 'Psychonauts 2',                        'GX029', 0.3500, 'Gaming'),
+  (30, (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='More Personal Computing'), 'Age of Empires IV',                    'GX030', 0.3500, 'Gaming'),
+  (31, (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='More Personal Computing'), 'Microsoft Flight Simulator 2024',      'GX031', 0.3500, 'Gaming'),
+  (32, (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='More Personal Computing'), 'Microsoft Flight Simulator (2020)',    'GX032', 0.3500, 'Gaming'),
+  (33, (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='More Personal Computing'), 'Gears 5',                              'GX033', 0.3500, 'Gaming'),
+  (34, (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='More Personal Computing'), 'Gears Tactics',                        'GX034', 0.3500, 'Gaming'),
+  (35, (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='More Personal Computing'), 'Ori and the Will of the Wisps',        'GX035', 0.3500, 'Gaming'),
+  (36, (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='More Personal Computing'), 'Pentiment',                            'GX036', 0.3500, 'Gaming'),
+  (37, (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='More Personal Computing'), 'Grounded',                             'GX037', 0.3500, 'Gaming'),
+  (38, (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='More Personal Computing'), 'The Elder Scrolls Online (Base Game)', 'GX038', 0.3500, 'Gaming'),
+  (39, (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='More Personal Computing'), 'Deathloop',                            'GX039', 0.3500, 'Gaming'),
+  (40, (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='More Personal Computing'), 'Dishonored 2',                         'GX040', 0.3500, 'Gaming')
 ON DUPLICATE KEY UPDATE
     name            = VALUES(name),
     sku             = VALUES(sku),
-    unit_cost_ratio = VALUES(unit_cost_ratio);
+    unit_cost_ratio = VALUES(unit_cost_ratio),
+    product_line    = VALUES(product_line);
 
--- ---- Productivity & Business Cloud (segment_id via subquery) -------------
+-- ---- Productivity and Business Processes (PBP) (segment_id via subquery) -------------
 -- ~31 products, unit_cost_ratio = 0.2500
 
 INSERT INTO PRODUCT (product_id, segment_id, name, sku, unit_cost_ratio) VALUES
-  (41, (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='Productivity & Business Cloud'), 'Microsoft 365 Personal (Annual)',          'PB001', 0.2500),
-  (42, (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='Productivity & Business Cloud'), 'Microsoft 365 Family (Annual)',            'PB002', 0.2500),
-  (43, (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='Productivity & Business Cloud'), 'Microsoft 365 Business Basic',            'PB003', 0.2500),
-  (44, (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='Productivity & Business Cloud'), 'Microsoft 365 Business Standard',         'PB004', 0.2500),
-  (45, (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='Productivity & Business Cloud'), 'Microsoft 365 Business Premium',          'PB005', 0.2500),
-  (46, (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='Productivity & Business Cloud'), 'Microsoft 365 Apps for Business',         'PB006', 0.2500),
-  (47, (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='Productivity & Business Cloud'), 'Microsoft 365 E3',                        'PB007', 0.2500),
-  (48, (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='Productivity & Business Cloud'), 'Microsoft 365 E5',                        'PB008', 0.2500),
-  (49, (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='Productivity & Business Cloud'), 'Azure — Pay-As-You-Go Subscription',      'PB009', 0.2500),
-  (50, (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='Productivity & Business Cloud'), 'Azure — Reserved Instance 1-Year',        'PB010', 0.2500),
-  (51, (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='Productivity & Business Cloud'), 'Azure — Reserved Instance 3-Year',        'PB011', 0.2500),
-  (52, (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='Productivity & Business Cloud'), 'Azure AI Services Subscription',          'PB012', 0.2500),
-  (53, (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='Productivity & Business Cloud'), 'Azure DevOps — Basic Plan',               'PB013', 0.2500),
-  (54, (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='Productivity & Business Cloud'), 'Azure DevOps — Basic + Test Plans',       'PB014', 0.2500),
-  (55, (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='Productivity & Business Cloud'), 'Microsoft Teams Essentials',              'PB015', 0.2500),
-  (56, (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='Productivity & Business Cloud'), 'Microsoft Teams Phone with Calling Plan', 'PB016', 0.2500),
-  (57, (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='Productivity & Business Cloud'), 'Microsoft Teams Rooms Pro',               'PB017', 0.2500),
-  (58, (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='Productivity & Business Cloud'), 'Microsoft Viva Suite',                    'PB018', 0.2500),
-  (59, (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='Productivity & Business Cloud'), 'Microsoft Copilot for Microsoft 365',     'PB019', 0.2500),
-  (60, (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='Productivity & Business Cloud'), 'Power BI Pro',                            'PB020', 0.2500),
-  (61, (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='Productivity & Business Cloud'), 'Power BI Premium Per User',               'PB021', 0.2500),
-  (62, (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='Productivity & Business Cloud'), 'Power Apps Per User Plan',                'PB022', 0.2500),
-  (63, (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='Productivity & Business Cloud'), 'Power Automate Per User Plan',            'PB023', 0.2500),
-  (64, (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='Productivity & Business Cloud'), 'Dynamics 365 Business Central Essentials','PB024', 0.2500),
-  (65, (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='Productivity & Business Cloud'), 'Dynamics 365 Sales Professional',         'PB025', 0.2500),
-  (66, (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='Productivity & Business Cloud'), 'Dynamics 365 Customer Service Professional','PB026', 0.2500),
-  (67, (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='Productivity & Business Cloud'), 'LinkedIn Recruiter Lite (Annual)',        'PB027', 0.2500),
-  (68, (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='Productivity & Business Cloud'), 'LinkedIn Sales Navigator Core (Annual)',  'PB028', 0.2500),
-  (69, (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='Productivity & Business Cloud'), 'Microsoft Intune Plan 1',                 'PB029', 0.2500),
-  (70, (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='Productivity & Business Cloud'), 'Microsoft Defender for Business',         'PB030', 0.2500),
-  (71, (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='Productivity & Business Cloud'), 'Microsoft Defender for Endpoint P2',      'PB031', 0.2500)
+  (41, (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='Productivity and Business Processes'), 'Microsoft 365 Personal (Annual)',          'PB001', 0.2500),
+  (42, (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='Productivity and Business Processes'), 'Microsoft 365 Family (Annual)',            'PB002', 0.2500),
+  (43, (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='Productivity and Business Processes'), 'Microsoft 365 Business Basic',            'PB003', 0.2500),
+  (44, (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='Productivity and Business Processes'), 'Microsoft 365 Business Standard',         'PB004', 0.2500),
+  (45, (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='Productivity and Business Processes'), 'Microsoft 365 Business Premium',          'PB005', 0.2500),
+  (46, (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='Productivity and Business Processes'), 'Microsoft 365 Apps for Business',         'PB006', 0.2500),
+  (47, (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='Productivity and Business Processes'), 'Microsoft 365 E3',                        'PB007', 0.2500),
+  (48, (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='Productivity and Business Processes'), 'Microsoft 365 E5',                        'PB008', 0.2500),
+  (49, (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='Productivity and Business Processes'), 'Azure — Pay-As-You-Go Subscription',      'PB009', 0.2500),
+  (50, (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='Productivity and Business Processes'), 'Azure — Reserved Instance 1-Year',        'PB010', 0.2500),
+  (51, (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='Productivity and Business Processes'), 'Azure — Reserved Instance 3-Year',        'PB011', 0.2500),
+  (52, (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='Productivity and Business Processes'), 'Azure AI Services Subscription',          'PB012', 0.2500),
+  (53, (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='Productivity and Business Processes'), 'Azure DevOps — Basic Plan',               'PB013', 0.2500),
+  (54, (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='Productivity and Business Processes'), 'Azure DevOps — Basic + Test Plans',       'PB014', 0.2500),
+  (55, (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='Productivity and Business Processes'), 'Microsoft Teams Essentials',              'PB015', 0.2500),
+  (56, (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='Productivity and Business Processes'), 'Microsoft Teams Phone with Calling Plan', 'PB016', 0.2500),
+  (57, (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='Productivity and Business Processes'), 'Microsoft Teams Rooms Pro',               'PB017', 0.2500),
+  (58, (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='Productivity and Business Processes'), 'Microsoft Viva Suite',                    'PB018', 0.2500),
+  (59, (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='Productivity and Business Processes'), 'Microsoft Copilot for Microsoft 365',     'PB019', 0.2500),
+  (60, (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='Productivity and Business Processes'), 'Power BI Pro',                            'PB020', 0.2500),
+  (61, (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='Productivity and Business Processes'), 'Power BI Premium Per User',               'PB021', 0.2500),
+  (62, (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='Productivity and Business Processes'), 'Power Apps Per User Plan',                'PB022', 0.2500),
+  (63, (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='Productivity and Business Processes'), 'Power Automate Per User Plan',            'PB023', 0.2500),
+  (64, (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='Productivity and Business Processes'), 'Dynamics 365 Business Central Essentials','PB024', 0.2500),
+  (65, (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='Productivity and Business Processes'), 'Dynamics 365 Sales Professional',         'PB025', 0.2500),
+  (66, (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='Productivity and Business Processes'), 'Dynamics 365 Customer Service Professional','PB026', 0.2500),
+  (67, (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='Productivity and Business Processes'), 'LinkedIn Recruiter Lite (Annual)',        'PB027', 0.2500),
+  (68, (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='Productivity and Business Processes'), 'LinkedIn Sales Navigator Core (Annual)',  'PB028', 0.2500),
+  (69, (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='Productivity and Business Processes'), 'Microsoft Intune Plan 1',                 'PB029', 0.2500),
+  (70, (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='Productivity and Business Processes'), 'Microsoft Defender for Business',         'PB030', 0.2500),
+  (71, (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='Productivity and Business Processes'), 'Microsoft Defender for Endpoint P2',      'PB031', 0.2500)
 ON DUPLICATE KEY UPDATE
     name            = VALUES(name),
     sku             = VALUES(sku),
     unit_cost_ratio = VALUES(unit_cost_ratio);
 
--- ---- More Personal Computing (segment_id via subquery) -------------------
--- 30 products, unit_cost_ratio = 0.4000
+-- ---- More Personal Computing non-Gaming (segment=MPC, product_line NULL)
+-- 30 products, unit_cost_ratio = 0.4000 (synthetic only)
 
 INSERT INTO PRODUCT (product_id, segment_id, name, sku, unit_cost_ratio) VALUES
   (72,  (SELECT segment_id FROM COMPANY_SEGMENT WHERE name='More Personal Computing'), 'Surface Pro 9 (Intel, 256 GB)',             'MC001', 0.4000),
@@ -314,16 +325,17 @@ ON DUPLICATE KEY UPDATE
 
 -- ---------------------------------------------------------------------------
 -- 7. USER_SEGMENT_MAP
---    analyst_demo → Gaming only (1 row)
---    analyst_all  → all 3 segments (3 rows)
+--    analyst_demo → MPC segment, product_line='Gaming'
+--      (views filter to product_line='Gaming' so analyst_demo sees only Gaming products)
+--    analyst_all  → all 3 segments, no product_line restriction
 -- ---------------------------------------------------------------------------
-INSERT IGNORE INTO USER_SEGMENT_MAP (db_user, segment_id)
-    SELECT 'analyst_demo', segment_id
+INSERT IGNORE INTO USER_SEGMENT_MAP (db_user, segment_id, product_line)
+    SELECT 'analyst_demo', segment_id, 'Gaming'
     FROM   COMPANY_SEGMENT
-    WHERE  name = 'Gaming';
+    WHERE  name = 'More Personal Computing';
 
-INSERT IGNORE INTO USER_SEGMENT_MAP (db_user, segment_id)
-    SELECT 'analyst_all', segment_id
+INSERT IGNORE INTO USER_SEGMENT_MAP (db_user, segment_id, product_line)
+    SELECT 'analyst_all', segment_id, NULL
     FROM   COMPANY_SEGMENT;
 
 -- ---------------------------------------------------------------------------
@@ -340,13 +352,15 @@ ON DUPLICATE KEY UPDATE
 -- =============================================================================
 -- End of 06_seed_reference.sql
 -- Summary:
---   COMPANY_SEGMENT : 3 rows
+--   COMPANY_SEGMENT : 3 rows (PBP, IC, MPC — no Gaming row)
 --   DIM_DATE        : 1827 rows (2022-07-01 to 2027-06-30, inclusive)
---   DIM_DEVICE      : 9 rows (Xbox, Surface, Dell/HP/Lenovo PCs, Android, iOS,
---                             Cloud Gaming, MacBook)
+--   DIM_DEVICE      : 9 rows
 --   DIM_REGION      : 3 rows (Americas, EMEA, APAC)
 --   DIM_CHANNEL     : 3 rows (Digital, Physical, Subscription)
---   PRODUCT         : 101 rows (40 Gaming, 31 Productivity, 30 MPC)
---   USER_SEGMENT_MAP: 4 rows (analyst_demo×1, analyst_all×3)
+--   PRODUCT         : 101 rows
+--                     40 Gaming (segment=MPC, product_line='Gaming')
+--                     31 PBP (segment=PBP, product_line=NULL)
+--                     30 MPC non-Gaming (segment=MPC, product_line=NULL)
+--   USER_SEGMENT_MAP: 4 rows (analyst_demo→MPC+Gaming, analyst_all→all×NULL)
 --   CONFIG          : 2 rows (DB_ALLOCATED_MB, AT_RISK_FACTOR)
 -- =============================================================================

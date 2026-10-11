@@ -1,0 +1,10 @@
+event_type,name,start_date,end_date,expected_lift,steam_app_id,source_url
+acquisition,Microsoft completes Activision Blizzard acquisition,2023-10-13,2023-10-13,,,https://news.xbox.com/en-us/2023/10/13/xbox-activision-blizzard/
+price_change,Game Pass Ultimate / PC Game Pass / Core annual price increase (new members 2024-07-10; existing members from 2024-09-12),2024-07-10,2024-09-12,,,https://windowsreport.com/microsoft-announces-xbox-game-pass-price-change-starting-july-10/
+game_launch,Starfield: Shattered Space expansion launch,2024-09-30,2024-09-30,,1716740,https://pcgamer.com/games/rpg/starfield-shattered-space-launch-times
+price_change,Xbox Series S|X console and accessory price increase (global),2025-05-01,2025-05-01,,,https://www.purexbox.com/news/2025/05/xbox-is-raising-the-price-of-consoles-games-and-accessories
+price_change,Game Pass tier overhaul: Ultimate to $29.99 and PC Game Pass to $16.49 (new members 2025-10-01; existing members 2025-11-04),2025-10-01,2025-11-04,,,https://nerdist.com/article/xbox-sets-50-percent-price-hike-for-game-pass-ultimate/
+price_change,Xbox Series S|X US price increase effective date,2025-10-03,2025-10-03,,,https://fox5sandiego.com/news/microsoft-announces-50-price-hike-for-xbox-game-pass-ultimate/amp/
+game_launch,Call of Duty: Black Ops 7 launch,2025-11-14,2025-11-14,,1938090,https://www.dexerto.com/call-of-duty/call-of-duty-2025-details-2439485/
+price_change,Game Pass Ultimate cut to $22.99 and PC Game Pass to $13.99; future Call of Duty not day-one on Game Pass,2026-04-21,2026-04-21,,,https://news.xbox.com/en-us/2026/04/21/xbox-game-pass-update/
+game_launch,Call of Duty: Modern Warfare 4 launch (FUTURE),2026-10-23,2026-10-23,,1938090,https://www.callofduty.com/modernwarfare4

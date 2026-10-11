@@ -17,3 +17,11 @@ data/raw/msft_facts.json
 # Force-include committed seed files
 !data/raw/events.csv
 !data/raw/segments.csv
+
+# --- PROPOSED FIX (Phase B, awaiting approval) ---
+# The line below was previously "*.sql" which silently ignored all SQL files,
+# including all migration scripts and DDL.  It has been REMOVED.
+# If you want to keep a *.sql ignore for something specific (e.g. dump files),
+# add a targeted rule like: data/raw/*.sql  or  backups/*.sql
+# Do NOT add a blanket *.sql rule again.
+# -------------------------------------------------------

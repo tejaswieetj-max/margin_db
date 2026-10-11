@@ -1,5 +1,5 @@
 # Requirements Document
-
+OLD
 ## Introduction
 
 Margin DB is a full-stack DBMS course project scoped to a single corporation — Microsoft, with a focus on its Gaming division (Xbox, Game Pass, Call of Duty). Business events (product launches, promotions, pricing changes, seasonal spikes) drive two parallel forecasts: a business forecast (revenue and gross margin) and a database load forecast (storage growth, query degradation). Three demo accounts are provided — `analyst_demo`, `analyst_all`, and `engineer_demo` — and the system must demonstrate a complete end-to-end demo loop covering query detection, index recommendation, index application, and measurable performance improvement. The fixed stack is MySQL 8.0.18+, FastAPI + pyodbc (ODBC-only in the backend), React 18 + Vite, and Python 3.12.

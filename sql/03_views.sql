@@ -33,6 +33,7 @@ SELECT
     PRODUCT.name                  AS product_name,
     PRODUCT.sku,
     PRODUCT.unit_cost_ratio,
+    PRODUCT.product_line,
     DIM_DATE.date_id,
     DIM_DATE.fiscal_year,
     DIM_DATE.fiscal_quarter,
@@ -50,14 +51,19 @@ JOIN DIM_DEVICE  ON FACT_SALES.device_id   = DIM_DEVICE.device_id
 JOIN DIM_REGION  ON FACT_SALES.region_id   = DIM_REGION.region_id
 JOIN DIM_CHANNEL ON FACT_SALES.channel_id  = DIM_CHANNEL.channel_id
 WHERE FACT_SALES.segment_id IN (
-    SELECT segment_id FROM USER_SEGMENT_MAP
-    WHERE db_user = SUBSTRING_INDEX(USER(),'@',1)
+    SELECT m.segment_id FROM USER_SEGMENT_MAP m
+    WHERE m.db_user = SUBSTRING_INDEX(USER(),'@',1)
+      AND (m.product_line IS NULL
+           OR m.product_line = PRODUCT.product_line)
 );
 
 -- -----------------------------------------------------------------------------
 -- 2. v_financials
 --    QUARTERLY_FINANCIALS joined to COMPANY_SEGMENT.
 --    Segment-filtered via USER_SEGMENT_MAP.
+--    NOTE: analyst_demo is mapped to MPC; this view returns MPC financials.
+--    Real Gaming revenue is NOT in QUARTERLY_FINANCIALS; see GAMING_REVENUE_SERIES.
+--    Users with product_line restrictions see only the parent segment financials.
 -- -----------------------------------------------------------------------------
 DROP VIEW IF EXISTS v_financials;
 CREATE SQL SECURITY DEFINER VIEW v_financials AS

@@ -273,6 +273,11 @@
         "executionId": "2f4ea6ce-fcc4-47a2-a697-f6f7595c740e",
         "chatSessionId": "sess_2d7f1149-28e2-48c7-a31a-b7b91a208652",
         "timestamp": 1791564366856
+      },
+      {
+        "executionId": "2f4ea6ce-fcc4-47a2-a697-f6f7595c740e",
+        "chatSessionId": "sess_2d7f1149-28e2-48c7-a31a-b7b91a208652",
+        "timestamp": 1791565724766
       }
     ],
     "2.1 Write fetch_edgar.py": [
@@ -280,6 +285,16 @@
         "executionId": "a5d6ebb4-856a-4200-b472-e3bf7b24a6c0",
         "chatSessionId": "sess_2d7f1149-28e2-48c7-a31a-b7b91a208652",
         "timestamp": 1791560339740
+      },
+      {
+        "executionId": "2f4ea6ce-fcc4-47a2-a697-f6f7595c740e",
+        "chatSessionId": "sess_2d7f1149-28e2-48c7-a31a-b7b91a208652",
+        "timestamp": 1791566037082
+      },
+      {
+        "executionId": "2f4ea6ce-fcc4-47a2-a697-f6f7595c740e",
+        "chatSessionId": "sess_2d7f1149-28e2-48c7-a31a-b7b91a208652",
+        "timestamp": 1791566152638
       }
     ],
     "2.2 Write load_financials.py": [
@@ -287,6 +302,16 @@
         "executionId": "a5d6ebb4-856a-4200-b472-e3bf7b24a6c0",
         "chatSessionId": "sess_2d7f1149-28e2-48c7-a31a-b7b91a208652",
         "timestamp": 1791560339767
+      },
+      {
+        "executionId": "2f4ea6ce-fcc4-47a2-a697-f6f7595c740e",
+        "chatSessionId": "sess_2d7f1149-28e2-48c7-a31a-b7b91a208652",
+        "timestamp": 1791566157015
+      },
+      {
+        "executionId": "2f4ea6ce-fcc4-47a2-a697-f6f7595c740e",
+        "chatSessionId": "sess_2d7f1149-28e2-48c7-a31a-b7b91a208652",
+        "timestamp": 1791566261457
       }
     ],
     "2.3 HUMAN STEP — provide segments.csv": [
@@ -294,6 +319,11 @@
         "executionId": "a5d6ebb4-856a-4200-b472-e3bf7b24a6c0",
         "chatSessionId": "sess_2d7f1149-28e2-48c7-a31a-b7b91a208652",
         "timestamp": 1791560339798
+      },
+      {
+        "executionId": "2f4ea6ce-fcc4-47a2-a697-f6f7595c740e",
+        "chatSessionId": "sess_2d7f1149-28e2-48c7-a31a-b7b91a208652",
+        "timestamp": 1791566265958
       }
     ],
     "2.4 HUMAN STEP — provide steam_players.csv": [
@@ -301,6 +331,11 @@
         "executionId": "a5d6ebb4-856a-4200-b472-e3bf7b24a6c0",
         "chatSessionId": "sess_2d7f1149-28e2-48c7-a31a-b7b91a208652",
         "timestamp": 1791560339825
+      },
+      {
+        "executionId": "2f4ea6ce-fcc4-47a2-a697-f6f7595c740e",
+        "chatSessionId": "sess_2d7f1149-28e2-48c7-a31a-b7b91a208652",
+        "timestamp": 1791566266191
       }
     ],
     "2.5 Write load_steam.py — STEAM_PLAYER only": [
@@ -644,6 +679,13 @@
         "executionId": "2f4ea6ce-fcc4-47a2-a697-f6f7595c740e",
         "chatSessionId": "sess_2d7f1149-28e2-48c7-a31a-b7b91a208652",
         "timestamp": 1791563163009
+      }
+    ],
+    "1.1b Write sql/reset_db.sql — destructive reset script": [
+      {
+        "executionId": "2f4ea6ce-fcc4-47a2-a697-f6f7595c740e",
+        "chatSessionId": "sess_2d7f1149-28e2-48c7-a31a-b7b91a208652",
+        "timestamp": 1791565724814
       }
     ]
   }

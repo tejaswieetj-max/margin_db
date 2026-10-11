@@ -83,6 +83,7 @@ CREATE TABLE IF NOT EXISTS PRODUCT (
     name            VARCHAR(100)   NULL,
     sku             VARCHAR(20)    NULL,
     unit_cost_ratio DECIMAL(5,4)   NULL,
+    product_line    VARCHAR(50)    NULL COMMENT 'Product-line tag, e.g. Gaming. NULL for non-tagged products. Gaming products: segment_id=MPC, product_line=''Gaming''.',
     PRIMARY KEY (product_id),
     CONSTRAINT fk_product_segment
         FOREIGN KEY (segment_id) REFERENCES COMPANY_SEGMENT (segment_id)
@@ -93,8 +94,9 @@ CREATE TABLE IF NOT EXISTS PRODUCT (
 --    analyst_demo→Gaming only; analyst_all→all segments
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS USER_SEGMENT_MAP (
-    db_user    VARCHAR(64) NOT NULL,
-    segment_id INT         NOT NULL,
+    db_user      VARCHAR(64) NOT NULL,
+    segment_id   INT         NOT NULL,
+    product_line VARCHAR(50) NULL COMMENT 'NULL = full segment; non-NULL restricts view to this product line',
     PRIMARY KEY (db_user, segment_id),
     CONSTRAINT fk_usm_segment
         FOREIGN KEY (segment_id) REFERENCES COMPANY_SEGMENT (segment_id)
