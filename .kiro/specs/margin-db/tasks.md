@@ -670,7 +670,7 @@ Six-stage implementation plan following the staged development process (Requirem
     - `npm run build`; assert exit 0 with no errors
     - **HUMAN STEP**: Start backend (`uvicorn backend.app.main:app --reload`) and frontend (`npm run dev`) in separate terminals; verify in browser:
       1. Navigate to `/analyst/events` without logging in → redirects to `/login` within 1 second
-      2. Log in as `analyst_demo` → Event Calendar shows events; v_sales returns Gaming product_line rows only (segment=MPC, product_line='Gaming'); v_financials returns MPC rows only
+      2. Log in as `analyst_demo` → Event Calendar shows events; v_vm_workload is accessible only (segment=MPC, product_line='Gaming'); v_financials returns MPC rows only
       3. Log in as `engineer_demo` → engineer dashboard loads; no revenue data, no pricing data visible
       4. `POST /sql` with Heavy_Demo_Query → flagged badge appears; poll MyQueries page until index recommendation appears
       5. Engineer approves index → index visible in PartitionManager after polling
