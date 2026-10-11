@@ -125,7 +125,7 @@ Six-stage implementation plan following the staged development process (Requirem
 
   - [x] 1.5 Write 05_triggers_events.sql — triggers and scheduled events
     - All triggers: `DROP TRIGGER IF EXISTS` + `CREATE TRIGGER`; all events: `DROP EVENT IF EXISTS` + `CREATE EVENT`
-    - `BEFORE INSERT` trigger on `FACT_SALES`: validate `product_id` EXISTS in PRODUCT and `segment_id` EXISTS in COMPANY_SEGMENT; `SIGNAL SQLSTATE '45000'` on failure; use `SUBSTRING_INDEX(USER(),'@',1)` not `CURRENT_USER()`
+    - `BEFORE INSERT` trigger on `FACT_SALES`: NOT APPLICABLE (FACT_SALES unused; no synthetic sales data)
     - `AFTER UPDATE` trigger on `PRICING_RULE`: INSERT into AUDIT_LOG with old/new values as JSON, `db_user = SUBSTRING_INDEX(USER(),'@',1)`, `at = NOW(3)`
     - `AFTER DELETE` trigger on `PRICING_RULE`: INSERT into AUDIT_LOG with old value as JSON
     - Do NOT include `SET GLOBAL event_scheduler` — that is a HUMAN STEP (Stage 0); add a comment explaining this
