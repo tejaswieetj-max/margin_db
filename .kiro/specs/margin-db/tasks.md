@@ -128,20 +128,20 @@ Six-stage implementation plan following the staged development process (Requirem
     - `AFTER UPDATE` trigger on `PRICING_RULE`: INSERT into AUDIT_LOG with old/new values as JSON, `db_user = SUBSTRING_INDEX(USER(),'@',1)`, `at = NOW(3)`
     - `AFTER DELETE` trigger on `PRICING_RULE`: INSERT into AUDIT_LOG with old value as JSON
     - Do NOT include `SET GLOBAL event_scheduler` — that is a HUMAN STEP (Stage 0); add a comment explaining this
-    - EVENT `ev_snapshot_sizes`: `CREATE EVENT ... ON SCHEDULE EVERY 1 DAY DO CALL sp_snapshot_sizes();`
+    - EVENT `ev_snapshot_sizes`: `CREATE EVENT ... ON SCHEDULE EVERY 1 DAY STARTS CURRENT_TIMESTAMP DO CALL sp_snapshot_sizes();`
     - EVENT `ev_recalc_forecasts`: nightly; stub body loops through BUSINESS_EVENT calling `sp_forecast_database`
     - _Requirements: 3.1, 5.3, 5.6, 5.7, 12.4, 17.2_
 
   - [x] 1.6 Write 06_seed_reference.sql — all reference data
     - Use `INSERT IGNORE` or `INSERT ... ON DUPLICATE KEY UPDATE` for idempotency throughout
-    - `COMPANY_SEGMENT`: Gaming, Productivity & Business Cloud, More Personal Computing
+    - `COMPANY_SEGMENT`: Productivity and Business Processes (PBP), Intelligent Cloud (IC), More Personal Computing (MPC). No Gaming row. (For upgrades from old schema, run 09_fix_segments.sql first.)
     - `DIM_DATE`: cover 2022-07-01 through 2027-06-30; set `fiscal_year`/`fiscal_quarter` (Microsoft FY ends June 30); set `is_black_friday` (last Friday of November each year); set `is_holiday`
     - `DIM_DEVICE`: all five platforms (Xbox, Windows PC, Mobile, Cloud, Mac); `oem` non-null only for Windows PC rows
     - `DIM_REGION`: Americas, EMEA, APAC
     - `DIM_CHANNEL`: Digital, Physical, Subscription
-    - `PRODUCT`: at least 100 products total, distributed across segments (~40 Gaming, ~30 Productivity, ~30 MPC)
-    - `USER_SEGMENT_MAP`: `analyst_demo` → Gaming segment only; `analyst_all` → all segments
-    - `CONFIG`: `INSERT ('DB_ALLOCATED_MB', '10240')` as initial placeholder (overwritten after ETL completes); `INSERT ('AT_RISK_FACTOR', '1.25')` as the default at-risk multiplier
+    - `PRODUCT`: at least 100 products total; ~40 Gaming (segment=MPC, product_line='Gaming'), ~31 PBP, ~30 MPC non-Gaming (product_line=NULL); Gaming products: unit_cost_ratio is synthetic-only, cost_amount=NULL in FACT_SALES
+    - `USER_SEGMENT_MAP`: `analyst_demo` → MPC segment, product_line='Gaming'; `analyst_all` → all 3 segments, product_line=NULL
+    - `CONFIG`: seed DB_ALLOCATED_MB='10240', AT_RISK_FACTOR='1.25', EVENT_PRE_MONTHS='3', EVENT_POST_MONTHS='3', BASELINE_MONTHS='3', MIN_BASELINE_MONTHS='3', FORECAST_LIFT_MONTHS='3', STEAM_TO_REVENUE_SCALE='1.0'
     - _Requirements: 3.7, 2.7_
 
   - [x] 1.7 Write 07_grants.sql — ALL GRANT statements (only file with GRANTs)
@@ -227,7 +227,7 @@ Six-stage implementation plan following the staged development process (Requirem
 
   - [~] 2.4 HUMAN STEP — provide steam_players.csv (Phase A complete)
     - **HUMAN STEP**: Provide `data/raw/steam_players.csv` with columns: `app_id`, `obs_date`, `avg_players`, `peak_players`; no fabricated data
-    - **Phase A validation result**: ✅ PASSED — 5 app IDs, 49 rows each (except app 1716740: 37 rows from Sep 2023), all obs_date = 1st of month, no duplicates, no missing months, avg_players is decimal, peak_players is integer, no negatives.
+    - **Phase A validation result**: ✅ PASSED — 5 app IDs. Coverage: apps 1938090/1172620/1240440/1551360 have 49 rows each (Oct 2022 – Sep 2026); app 1716740 (Starfield) has 37 rows (Sep 2023 – Sep 2026). Total: 4×49 + 37 = 233 rows. No duplicates, no missing months within each app's range, all obs_date = 1st of month, avg_players is decimal, peak_players is integer, no negatives.
     - App IDs verified: 1938090=Call of Duty, 1172620=Sea of Thieves, 1240440=Halo Infinite, 1551360=Forza Horizon 5, 1716740=Starfield.
     - Task state set to [~] — data file provided, loader to be updated for DECIMAL avg_players after Phase B approval.
     - _Requirements: 4.2, 4.12, 22.5_
@@ -246,7 +246,7 @@ Six-stage implementation plan following the staged development process (Requirem
     - _Requirements: 4.3, 4.10_
 
   - [ ] 2.7 HUMAN STEP — provide events.csv
-    - **HUMAN STEP**: Provide `data/raw/events.csv` with columns: `event_type`, `name`, `start_date`, `end_date`, `expected_lift`, `source_url`; must include at least one `game_launch` event with `start_date` after today; no fabricated data
+    - **HUMAN STEP**: Provide `data/raw/events.csv` with columns: `event_type`, `name`, `start_date`, `end_date`, `expected_lift`, `steam_app_id` (INT or blank), `source_url`; `steam_app_id` is required for game_launch events that have a Steam title; leave blank/NULL for non-Steam events (Black Friday, price changes, etc.); must include at least one `game_launch` event with `start_date` after today; no fabricated data
     - Agent must stop and wait for operator confirmation before proceeding
     - _Requirements: 4.5, 4.12, 22.5_
 
@@ -276,7 +276,7 @@ Six-stage implementation plan following the staged development process (Requirem
     - Apply event lifts from `EVENT_WINDOW_DAY` during event windows
     - Seasonality: Black Friday rows × 3.0, December rows × 1.5
     - Device mix: Xbox 40%, Windows PC 35%, Mobile 15%, Cloud 5%, Mac 5%; `oem` non-null only for Windows PC rows
-    - `unit_cost = unit_price × cost_ratio_for_segment`; document ratios in `docs/MARGIN_DB.md`
+    - `unit_cost_ratio` drives `cost_amount = unit_price × unit_cost_ratio` for PBP/IC/MPC products (synthetic only, never presented as real margin). Gaming products: `cost_amount = NULL` (no Gaming cost data disclosed; do not fabricate). Document unit_cost_ratio values in `docs/MARGIN_DB.md` with an explicit label "synthetic approximation — not reported data"
     - Seeded RNG from `SYNTHETIC_SEED` env var (default 42)
     - Write CSV chunks to `data/clean/`; also write 100k-row ORDERS/ORDER_ITEM subset
     - All FK column values (`product_id`, `device_id`, `region_id`, `channel_id`) pre-loaded from DB; no random ID generation
@@ -320,7 +320,7 @@ Six-stage implementation plan following the staged development process (Requirem
     - _Requirements: 17.1, 17.2, 17.3_
 
   - [ ] 3.2 Implement sp_margin_decomposition
-    - Replace stub with full logic: intersect the requested segment with the caller's USER_SEGMENT_MAP using `WHERE segment_id IN (SELECT segment_id FROM USER_SEGMENT_MAP WHERE db_user=SUBSTRING_INDEX(USER(),'@',1)) AND segment_name = p_segment`; if no matching rows, return empty result
+    - Replace stub with full logic: intersect the requested segment with the caller's USER_SEGMENT_MAP using `WHERE segment_id IN (SELECT segment_id FROM USER_SEGMENT_MAP WHERE db_user=SUBSTRING_INDEX(USER(),'@',1)) AND segment_name = p_segment`; also apply product_line filter if USM.product_line IS NOT NULL; if no matching rows, return empty result
     - Read from FACT_SALES via DEFINER access; GROUP BY segment for periods A and B
     - Compute volume, price, discount, and mix effects
     - Return result set: `(effect_name VARCHAR(20), value_delta DECIMAL(20,4))`
@@ -329,14 +329,32 @@ Six-stage implementation plan following the staged development process (Requirem
     - _Requirements: 15.1, 5.1, 5.2, 5.10_
 
   - [ ] 3.3 Implement sp_forecast_business
-    - Replace stub: 4-quarter trailing average daily revenue as baseline
-    - Verify the event's segment is in the caller's USER_SEGMENT_MAP entries; return empty result set if not permitted
-    - `event_lift = AVG(lift_ratio over event window days where IS NOT NULL) − 1`; fall back to `expected_lift − 1` if no non-NULL EVENT_WINDOW_DAY data; fall back to 0 if neither
-    - `projected_revenue_impact = baseline_daily_revenue × event_duration_days × event_lift`
-    - Confidence tier: high (all 3 inputs), medium (2 inputs), low (0–1 inputs)
+    - Read CONFIG keys at start: EVENT_PRE_MONTHS, EVENT_POST_MONTHS, BASELINE_MONTHS, MIN_BASELINE_MONTHS, FORECAST_LIFT_MONTHS (all default 3); never hardcode these values
+    - Baseline: trailing 4-quarter average monthly revenue from QUARTERLY_FINANCIALS (post-2023-10 quarters only, to use post-Activision-acquisition data); verify caller has segment access via USER_SEGMENT_MAP; return empty result set if not permitted
+    - Lift source selection (in order of preference):
+      a. IF event has non-NULL steam_app_id AND EVENT_WINDOW_MONTH has ≥1 non-NULL lift_ratio at offsets 0..FORECAST_LIFT_MONTHS-1:
+           measured_lift = AVG(non-NULL lift_ratio at offsets 0..FORECAST_LIFT_MONTHS-1) − 1
+           lift_source = 'measured'
+      b. ELSE IF this is a game_launch event with no measured lift (e.g. future title like Modern Warfare 4):
+           Look up all prior game_launch events of the same event_type that DO have measured lift
+           IF at least 1 prior launch has measured data:
+             derived_lift = AVG(measured_lift across those prior launches)
+             n_prior_launches = COUNT of those launches
+             lift_source = 'derived_from_prior_launches'
+             confidence capped at 'medium' (regardless of other inputs)
+           ELSE fall through to (c)
+      c. ELSE IF BUSINESS_EVENT.expected_lift IS NOT NULL:
+           event_lift = expected_lift − 1; lift_source = 'expected_lift'
+      d. ELSE: event_lift = 0; lift_source = 'zero_fallback'
+    - Write FORECAST_LINE: metric_name='lift_source', metric_value=NULL, error_indicator=lift_source (stores which path was taken)
+    - When lift_source='derived_from_prior_launches': write additional FORECAST_LINE with metric_name='n_prior_launches', metric_value=n_prior_launches
+    - Add CONFIG key: STEAM_TO_REVENUE_SCALE (documents the proxy scale factor; default '1.0'; read but not yet used in formula — document as illustrative proxy in FORECAST_LINE)
+    - `projected_revenue_impact = baseline_monthly_revenue × event_duration_months × event_lift`
+    - Confidence tier: high (all 3 inputs, lift_source='measured'), medium (2 inputs OR lift_source='derived_from_prior_launches'), low (0–1 inputs or zero_fallback)
     - `as_of_date` from `@as_of_date` session variable (NULL → CURDATE())
     - Write to FORECAST + FORECAST_LINE; return result set
     - `SUBSTRING_INDEX(USER(),'@',1)` throughout; no `CURRENT_USER()`
+    - No Gaming cost, operating income or margin anywhere in this procedure
     - _Requirements: 8.1, 8.2, 8.3, 8.4, 8.5, 8.7, 5.10_
 
   - [ ] 3.4 Implement sp_update_pricing_rule
@@ -387,7 +405,7 @@ Six-stage implementation plan following the staged development process (Requirem
     - Read `DB_ALLOCATED_MB` from `CONFIG WHERE config_key='DB_ALLOCATED_MB'`; fall back to `@db_allocated_mb` session variable if CONFIG row absent
     - Read `AT_RISK_FACTOR` from `CONFIG WHERE config_key='AT_RISK_FACTOR'`; default 1.25 if absent
     - Guard: `IF slope_mb_per_day <= 0` → set `days_to_90=NULL`; write FORECAST_LINE with `error_indicator='slope_non_positive'`; RETURN without exception
-    - Compute projected_rows using: `projected_rows = current_rows + rows_per_day × event_duration_days × (1 + event_lift)`
+    - Compute projected_rows using: `projected_rows = current_rows + rows_per_day × event_duration_days × (1 + event_lift)`; event_lift sourced from EVENT_WINDOW_MONTH (monthly, CONFIG-driven) — same lookup as sp_forecast_business
     - Compute growth: `projected_growth_mb = slope_mb_per_day × (1 + event_lift) × event_duration_days`
     - At-risk queries: `projected_duration_ms = baseline_ms × (projected_rows / current_rows)`; mark at_risk if `>= AT_RISK_FACTOR × baseline_ms`; ordered by event date
     - 30-day warning: write FORECAST_LINE `metric_name='warning_30_day'` if `days_to_90 < 30`
@@ -487,7 +505,7 @@ Six-stage implementation plan following the staged development process (Requirem
   - [ ] 4.5 Implement analyst router
     - All endpoints require `business_analyst` role; return HTTP 403 if mismatch
     - `GET /events`: `SELECT * FROM v_events`; return event list
-    - `GET /margin?segment&period_a&period_b&group_by`: SET `@group_by = ?` before calling SP if group_by provided; `call_sp(conn, "sp_margin_decomposition", [segment, period_a, period_b])`
+    - `GET /margin?segment&period_a&period_b&group_by`: SET `@group_by = ?` before calling SP if group_by provided; segment must be one of PBP/IC/MPC; `call_sp(conn, "sp_margin_decomposition", [segment, period_a, period_b])`
     - `GET /forecast/business/{event_id}?as_of_date=`: SET `@as_of_date`; `call_sp(conn, "sp_forecast_business", [event_id])`
     - `POST /sql`: validate single SELECT or `WITH...SELECT`; reject `re.search(r';\s*\S', sql)`; reject DML at word boundary; call `write_telemetry`; if flagged enqueue background task; return `{qe_id, flagged, rows, duration_ms}` immediately; ~60s timeout via `MAX_EXECUTION_TIME=30000`
     - `PUT /pricing/{rule_id}`: `call_sp_out` with `sp_update_pricing_rule`; p_status='OK' → HTTP 200; 'CONFLICT' → HTTP 409
@@ -591,7 +609,7 @@ Six-stage implementation plan following the staged development process (Requirem
     - _Requirements: 10.1, 10.2, 10.3, 10.5, 10.6_
 
   - [ ] 5.6 Implement analyst MarginDecomposition page
-    - Inputs: segment (dropdown), period_a (text), period_b (text), optional group_by; calls `GET /margin` with group_by passed as query param (backend sets as session variable before calling SP)
+    - Inputs: segment dropdown (options: Productivity and Business Processes, Intelligent Cloud, More Personal Computing), period_a (text), period_b (text), optional group_by; calls `GET /margin` with group_by passed as query param
     - Render Recharts bar chart with four decomposition components (volume, price, discount, mix)
     - _Requirements: 15.3_
 
@@ -636,7 +654,7 @@ Six-stage implementation plan following the staged development process (Requirem
     - `npm run build`; assert exit 0 with no errors
     - **HUMAN STEP**: Start backend (`uvicorn backend.app.main:app --reload`) and frontend (`npm run dev`) in separate terminals; verify in browser:
       1. Navigate to `/analyst/events` without logging in → redirects to `/login` within 1 second
-      2. Log in as `analyst_demo` → Event Calendar shows Gaming segment events only
+      2. Log in as `analyst_demo` → Event Calendar shows events; v_sales returns Gaming product_line rows only (segment=MPC, product_line='Gaming'); v_financials returns MPC rows only
       3. Log in as `engineer_demo` → engineer dashboard loads; no revenue data, no pricing data visible
       4. `POST /sql` with Heavy_Demo_Query → flagged badge appears; poll MyQueries page until index recommendation appears
       5. Engineer approves index → index visible in PartitionManager after polling

@@ -207,14 +207,14 @@ def call_sp_out(conn, sp_name: str, in_params: list, out_count: int):
 
 | Table | Key Columns | Notes |
 |-------|-------------|-------|
-| `COMPANY_SEGMENT` | `segment_id INT PK AUTO_INCREMENT`, `name VARCHAR(50) UNIQUE NOT NULL` | Three official reporting segments: Productivity and Business Processes (PBP), Intelligent Cloud (IC), More Personal Computing (MPC). Gaming is a product line inside MPC — it is NOT a COMPANY_SEGMENT row. |
+| `COMPANY_SEGMENT` | `segment_id INT PK AUTO_INCREMENT`, `name VARCHAR(50) UNIQUE NOT NULL` | Three official reporting segments: PBP, IC, MPC. No Gaming row. Gaming products are tagged PRODUCT.product_line='Gaming', segment=MPC. FACT_SALES rows for Gaming products: cost_amount=NULL (no Gaming cost disclosed). |
 | `DIM_DATE` | `date_id INT PK`, `calendar_date DATE UNIQUE`, `fiscal_year SMALLINT`, `fiscal_quarter TINYINT`, `is_black_friday BOOLEAN`, `is_holiday BOOLEAN` | 2022-07-01 to 2027-06-30; Microsoft FY ends June 30 |
 | `DIM_DEVICE` | `device_id INT PK AUTO_INCREMENT`, `platform VARCHAR(20)`, `device_family VARCHAR(50)`, `oem VARCHAR(50) NULL` | oem non-null only for Windows PC |
 | `DIM_REGION` | `region_id INT PK AUTO_INCREMENT`, `name VARCHAR(50)`, `parent_region VARCHAR(50)` | Americas, EMEA, APAC |
 | `DIM_CHANNEL` | `channel_id INT PK AUTO_INCREMENT`, `name VARCHAR(50)` | Digital, Physical, Subscription |
-| `PRODUCT` | `product_id INT PK AUTO_INCREMENT`, `segment_id INT FK→COMPANY_SEGMENT`, `name VARCHAR(100)`, `sku VARCHAR(20)`, `unit_cost_ratio DECIMAL(5,4)` | At least 100 products total, distributed across PBP, IC, MPC segments |
-| `USER_SEGMENT_MAP` | `db_user VARCHAR(64)`, `segment_id INT FK→COMPANY_SEGMENT`; PK(db_user, segment_id) | analyst_demo→MPC (pending owner decision on Q3 from MARGIN_DB.md §12.4); analyst_all→all |
-| `CONFIG` | `config_key VARCHAR(64) PK`, `config_value VARCHAR(255) NOT NULL` | Runtime key-value store. Keys seeded: DB_ALLOCATED_MB, AT_RISK_FACTOR, EVENT_PRE_MONTHS=3, EVENT_POST_MONTHS=3, BASELINE_MONTHS=3, MIN_BASELINE_MONTHS=3, FORECAST_LIFT_MONTHS=3. All lift/forecast code reads these from CONFIG; never hardcode. |
+| `PRODUCT` | `product_id INT PK AUTO_INCREMENT`, `segment_id INT FK→COMPANY_SEGMENT`, `name VARCHAR(100)`, `sku VARCHAR(20)`, `unit_cost_ratio DECIMAL(5,4) NULL`, `product_line VARCHAR(50) NULL` | 40 Gaming (segment=MPC, product_line='Gaming'), 31 PBP, 30 MPC non-Gaming. unit_cost_ratio: synthetic-only, drives cost_amount in FACT_SALES, never reported as real margin. Gaming: unit_cost_ratio NULL or unused; cost_amount=NULL in FACT_SALES. |
+| `USER_SEGMENT_MAP` | `db_user VARCHAR(64)`, `segment_id INT FK→COMPANY_SEGMENT`; PK(db_user, segment_id) | analyst_demo→MPC, product_line='Gaming'; analyst_all→all 3 segments, product_line=NULL. Views filter: (segment_id IN USM AND (USM.product_line IS NULL OR USM.product_line = PRODUCT.product_line)). |
+| `CONFIG` | `config_key VARCHAR(64) PK`, `config_value VARCHAR(255) NOT NULL` | Runtime key-value store. Seeded keys: DB_ALLOCATED_MB, AT_RISK_FACTOR=1.25, EVENT_PRE_MONTHS=3, EVENT_POST_MONTHS=3, BASELINE_MONTHS=3, MIN_BASELINE_MONTHS=3, FORECAST_LIFT_MONTHS=3, STEAM_TO_REVENUE_SCALE=1.0. All lift/forecast code reads from CONFIG; never hardcode. |
 
 #### Sales and Financial Tables
 
@@ -246,15 +246,15 @@ def call_sp_out(conn, sp_name: str, in_params: list, out_count: int):
 | `QUERY_PLAN_NODE` | `qe_id BIGINT FK→QUERY_EXECUTION`, `node_id SMALLINT`; PK(qe_id, node_id) | Weak entity; `parent_node_id SMALLINT NULL`, `operation VARCHAR(200)`, `table_name VARCHAR(64)`, `pct_time DECIMAL(6,2)`, `est_rows BIGINT`, `actual_rows BIGINT` |
 | `INDEX_RECOMMENDATION` | `rec_id INT PK AUTO_INCREMENT`, `qe_id BIGINT FK→QUERY_EXECUTION`, `table_name VARCHAR(64)`, `columns_csv VARCHAR(500)`, `index_name VARCHAR(128)`, `status VARCHAR(20) DEFAULT 'proposed'`, `before_ms DECIMAL(12,3) NULL`, `after_ms DECIMAL(12,3) NULL`, `decided_by VARCHAR(64) NULL`, `decided_at DATETIME(3) NULL` | |
 | `DB_SIZE_SNAPSHOT` | `snap_id INT PK AUTO_INCREMENT`, `snapped_at DATE UNIQUE`, `total_data_mb DECIMAL(12,2)`, `total_index_mb DECIMAL(12,2)`, `is_synthetic BOOLEAN NOT NULL DEFAULT FALSE` | UNIQUE KEY on snapped_at to prevent duplicate daily snapshots |
-| `FORECAST` | `forecast_id INT PK AUTO_INCREMENT`, `kind VARCHAR(20)`, `event_id INT NULL FK→BUSINESS_EVENT`, `as_of_date DATE`, `created_at DATETIME(3)` | kind: 'business' or 'database' |
+| `FORECAST` | `forecast_id INT PK AUTO_INCREMENT`, `kind VARCHAR(20)`, `event_id INT NULL FK→BUSINESS_EVENT`, `as_of_date DATE`, `created_at DATETIME(3)` | kind: 'business' or 'database'. FORECAST_LINE records lift_source ('measured'/'derived_from_prior_launches'/'expected_lift'/'zero_fallback'), n_prior_launches, STEAM_TO_REVENUE_SCALE. |
 | `FORECAST_LINE` | `forecast_id INT FK→FORECAST`, `line_no INT`; PK(forecast_id, line_no) | Weak entity; `metric_name VARCHAR(100)`, `metric_value DECIMAL(20,4)`, `error_indicator VARCHAR(200) NULL` |
 
 ### Views
 
 | View | Source | Filter | Notes |
 |------|--------|--------|-------|
-| `v_sales` | FACT_SALES + PRODUCT + DIM_DATE + DIM_DEVICE + DIM_REGION + DIM_CHANNEL | Segment filter via USER_SEGMENT_MAP | Exposes platform, device_family, oem, region_name (DIM_REGION.name), channel_name (DIM_CHANNEL.name); FACT_SALES has NO alias to keep EXPLAIN ANALYZE output unambiguous |
-| `v_financials` | QUARTERLY_FINANCIALS JOIN COMPANY_SEGMENT | Segment filter via USER_SEGMENT_MAP | |
+| `v_sales` | FACT_SALES + PRODUCT + DIM_DATE + DIM_DEVICE + DIM_REGION + DIM_CHANNEL | Segment filter via USER_SEGMENT_MAP; also product_line filter: `AND (USM.product_line IS NULL OR USM.product_line = PRODUCT.product_line)` | Exposes platform, device_family, oem, product_line, region_name, channel_name; FACT_SALES has NO alias |
+| `v_financials` | QUARTERLY_FINANCIALS JOIN COMPANY_SEGMENT | Segment filter via USER_SEGMENT_MAP | analyst_demo sees MPC rows only; real Gaming revenue is NOT here (see GAMING_REVENUE_SERIES). No product_line filter on v_financials (financials are at segment grain). |
 | `v_events` | BUSINESS_EVENT | No filter | Full event details including source_url and expected_lift |
 | `v_forecast_business` | FORECAST JOIN FORECAST_LINE WHERE kind='business' | No filter | |
 | `v_my_queries` | QUERY_EXECUTION LEFT JOIN INDEX_RECOMMENDATION | Filtered to `db_user = SUBSTRING_INDEX(USER(),'@',1)` — this is a per-user filter, NOT a segment filter | Returns query history for the calling user only |
@@ -686,8 +686,8 @@ SQL SECURITY DEFINER, owned by ADMIN_USER.
 ```
 load_sales.sh (orchestrator)
   1. fetch_edgar.py           → data/raw/msft_facts.json
-  2. load_financials.py       → QUARTERLY_FINANCIALS
-  [HUMAN STEP: confirm segments.csv present]
+  2. load_financials.py       → QUARTERLY_FINANCIALS (from segments_reported.csv; PBP/IC/MPC segment splits + operating income)
+  [HUMAN STEP: confirm segments_reported.csv present (PBP/IC/MPC) and segments.csv present (Gaming)]
   3. load_steam.py            → STEAM_PLAYER only
   4. load_trends.py           → GOOGLE_TREND
   [HUMAN STEP: confirm events.csv present]
@@ -764,14 +764,18 @@ load_sales.sh (orchestrator)
 # Reconciliation — three independent groups (PBP, IC, MPC):
 #   Productivity and Business Processes (PBP): SUM(gross_amount) vs QUARTERLY_FINANCIALS
 #   Intelligent Cloud (IC): reconcile independently
-#   More Personal Computing (MPC): reconcile independently (Gaming is inside MPC;
-#     DO NOT create a separate Gaming reconciliation group — that would double-count)
+#   More Personal Computing (MPC): reconcile independently (Gaming subset is inside;
+#     DO NOT create a separate Gaming reconciliation group — double-counting)
 #   tolerance: 0.1% per (fiscal_year, fiscal_quarter, segment_id) combination
 #   ABORT if any combination exceeds 0.1%
+#   Validator: PBP+IC+MPC sum must equal EDGAR company-wide total within 0.5%
+#   Also validate GAMING_REVENUE_SERIES total <= MPC total (sanity check)
 #   Print reconciliation report to stdout
 #
-# No Gaming cost, no Gaming operating income, no Gaming margin computation.
-# unit_cost and cost_amount apply only to PBP/IC/MPC products.
+# FACT_SALES.cost_amount:
+#   PBP/IC/MPC products: cost_amount = unit_price * unit_cost_ratio (synthetic)
+#   Gaming products (product_line='Gaming'): cost_amount = NULL (no cost data)
+# No Gaming operating income, no Gaming margin computation anywhere.
 #
 # Device mix: Xbox 40%, Windows PC 35%, Mobile 15%, Cloud 5%, Mac 5%
 # oem non-null only for Windows PC rows

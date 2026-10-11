@@ -97,8 +97,8 @@ Engine InnoDB, charset utf8mb4. Types are indicative; adjust sensibly.
 
 ### 8.1 Business tables
 
-**COMPANY_SEGMENT**: `segment_id TINYINT PK`, `name VARCHAR(50)`
-**PRODUCT**: `product_id INT PK AI`, `segment_id FK→COMPANY_SEGMENT`, `name`, `category`, `list_price DECIMAL(10,2)`
+**COMPANY_SEGMENT**: `segment_id TINYINT PK`, `name VARCHAR(50)`. Three official reporting segments: Productivity and Business Processes (PBP), Intelligent Cloud (IC), More Personal Computing (MPC). No Gaming row — Gaming is a product line inside MPC.
+**PRODUCT**: `product_id INT PK AI`, `segment_id FK→COMPANY_SEGMENT`, `name`, `sku`, `unit_cost_ratio DECIMAL(5,4) NULL` (synthetic-only; never reported as real margin), `product_line VARCHAR(50) NULL`. Gaming products: segment=MPC, product_line='Gaming'. unit_cost_ratio drives FACT_SALES.cost_amount synthesis; NULL or not used for margin reporting.
 **DIM_DATE**: `date_key INT PK (yyyymmdd)`, `full_date DATE`, `year`, `quarter`, `month`, `fiscal_year`, `fiscal_quarter`, `is_black_friday BOOL`, `is_holiday BOOL` (Microsoft's fiscal year ends June 30; FY Q1 = Jul–Sep)
 **DIM_DEVICE**: `device_id PK`, `platform` (Xbox console / Windows PC / Mac / Mobile / Cloud), `device_family`, `oem NULL` (only for PC rows; Lenovo/Dell/HP/ASUS etc.). Synthetic dimension.
 **DIM_REGION**: `region_id PK`, `name`
@@ -115,7 +115,7 @@ Engine InnoDB, charset utf8mb4. Types are indicative; adjust sensibly.
 
 **EVENT_WINDOW_MONTH** *(weak entity, owner BUSINESS_EVENT — renamed from EVENT_WINDOW_DAY in migration 08)*: **PK (event_id, month_offset)**, `avg_players DECIMAL(12,2) NULL`, `lift_ratio DECIMAL(10,4) NULL`. Month offset range: −EVENT_PRE_MONTHS..+EVENT_POST_MONTHS (both = 3 by default; see CONFIG). Offset 0 = the calendar month containing the event's start_date. lift_ratio is NULL when fewer than MIN_BASELINE_MONTHS (= 3) preceding months exist in STEAM_PLAYER; never estimated or zeroed.
 
-**FORECAST**: `forecast_id PK`, `kind ENUM('business','database')`, `event_id FK`, `created_at`, `created_by`
+**FORECAST**: `forecast_id PK`, `kind ENUM('business','database')`, `event_id FK`, `created_at`, `created_by`. FORECAST_LINE stores lift_source ('measured' / 'derived_from_prior_launches' / 'expected_lift' / 'zero_fallback'), n_prior_launches (when derived), and STEAM_TO_REVENUE_SCALE (proxy scale factor, illustrative).
 **FORECAST_LINE** *(weak entity, owner FORECAST)*: **PK (forecast_id, line_no)**, `metric`, `period`, `value`
 
 ### 8.2a Gaming revenue series (separate table, not a segment)
@@ -139,7 +139,7 @@ Engine InnoDB, charset utf8mb4. Types are indicative; adjust sensibly.
 **INDEX_RECOMMENDATION**: `rec_id PK`, `qe_id FK`, `table_name`, `columns_csv`, `status ENUM('proposed','testing','approved','rejected','applied')`, `before_ms`, `after_ms`, `decided_by`, `decided_at`
 **DB_SIZE_SNAPSHOT**: `snap_id PK`, `taken_at`, `table_name`, `data_mb`, `index_mb`, `row_count`, `is_synthetic`
 **CONFLICT_LOG**: `conflict_id PK`, `rule_id`, `attempted_by`, `stale_version`, `current_version`, `at`
-**USER_SEGMENT_MAP**: `db_user`, `segment_id`
+**USER_SEGMENT_MAP**: `db_user VARCHAR(64)`, `segment_id INT FK→COMPANY_SEGMENT`, `product_line VARCHAR(50) NULL`. NULL product_line = full segment access. analyst_demo: MPC + product_line='Gaming'. Views filter on (segment_id IN USM AND product_line IS NULL OR product_line = product.product_line).
 **AUDIT_LOG**: `audit_id PK`, `table_name`, `action`, `old_value`, `new_value`, `db_user`, `at`
 
 ### 8.5 Weak entities (course requirement: at least 2; we have 4)
@@ -207,7 +207,7 @@ Other requirements: CORS for the Vite dev origin only; consistent error JSON; Op
 |---|---|---|
 | Microsoft quarterly financials (revenue, COGS, operating income) | SEC EDGAR: `https://data.sec.gov/api/xbrl/companyfacts/CIK0000789019.json` | **Must send a `User-Agent` header** (name + email) or SEC rejects. Use quarterly, not cumulative/annual; take latest filed value per period for restatements. Values returned in **raw USD**; divide by 1,000,000 before inserting into QUARTERLY_FINANCIALS (which stores millions USD). |
 | Gaming product-line revenue | Microsoft quarterly earnings releases, 10-Q/10-K, IR spreadsheets | **Manual transcription** into `data/raw/segments.csv`. Header: `fiscal_year, fiscal_quarter, segment, revenue (in million dollars), operating_income, source_url, Months`. Values already in millions USD; insert as-is. operating_income blank for Gaming (not separately disclosed). Months column preserved as `months_label` in GAMING_REVENUE_SERIES. |
-| PBP / IC / MPC segment revenue | **[OPEN — see Section 12.4]** | EDGAR companyfacts does not reliably provide the three-segment breakdown. A second human-provided CSV is proposed. |
+| PBP / IC / MPC segment revenue and operating income | `data/raw/segments_reported.csv` — supplied by owner from Microsoft earnings releases (10-Q/10-K Segment Results) | Columns: fiscal_year, fiscal_quarter, segment_name, revenue_m, operating_income_m, source_url, basis. basis=recast_2024-08 or as_reported. Loaded by load_financials.py into QUARTERLY_FINANCIALS. Validator: PBP+IC+MPC sum must match EDGAR company-wide total within 0.5%. |
 | Steam player counts (Call of Duty, Sea of Thieves, Halo Infinite, Forza Horizon 5, Starfield) | steam_players.csv (monthly; 5 app IDs verified via store.steampowered.com) | `data/raw/steam_players.csv`. Monthly data → month-offset lift window. avg_players is DECIMAL (not INT); store as DECIMAL(12,2). |
 | Google Trends | `pytrends` for "Call of Duty", "Game Pass", "Xbox price"; manual CSV fallback | Rate-limit prone. |
 | Event calendar | **Hand-curated** `data/raw/events.csv` | Columns: `event_type, name, start_date, end_date, expected_lift, steam_app_id, source_url`. Unverifiable rows go to `events_unverified_review.csv`. Every row needs `source_url`. |
@@ -231,28 +231,29 @@ Everything else (query plans, timings, sizes after load) is **real measurement**
 
 ### 12.4 Open questions (require owner decision before Phase C)
 
-**Q1 — PBP/IC/MPC revenue source:**
-EDGAR companyfacts (`us-gaap.Revenues`) returns company-wide totals, not the three segment splits. Options:
-- **Option A (recommended):** Owner provides a second CSV (`data/raw/segment_financials.csv`) transcribed from the segment tables in Microsoft's 10-Q/10-K filings (Section "Segment Results"). Columns: `fiscal_year, fiscal_quarter, segment_name, revenue_m, cogs_m, operating_income_m, source_url`.
-- **Option B:** Load EDGAR company-wide revenue into QUARTERLY_FINANCIALS for a single "Microsoft Total" segment, and acknowledge that segment-level decomposition is unavailable from real data.
+**Q1 — PBP/IC/MPC revenue source: DECIDED**
+Owner will supply `data/raw/segments_reported.csv` transcribed from Microsoft earnings releases (10-Q/10-K Segment Results section).
+Columns: `fiscal_year, fiscal_quarter, segment_name, revenue_m, operating_income_m, source_url, basis`.
+- `basis` column: one of `recast_2024-08` (segments recast after Activision acquisition) or `as_reported` (original filing basis). Required to handle Microsoft's segment restatements.
+- `load_financials.py` reads this CSV. COGS is not always reported at segment level; `cogs_m` is omitted; operating_income_m is sufficient for margin analysis.
+- Validator: `PBP.revenue_m + IC.revenue_m + MPC.revenue_m` must equal EDGAR company-wide total within 0.5% for each period (tolerance is wider than synthetic reconciliation because of rounding in earnings releases).
+- Real Gaming revenue: GAMING_REVENUE_SERIES only (sourced from segments.csv). Never in QUARTERLY_FINANCIALS.
 
-Which option do you prefer?
+**Q2 — Margin / cost for the three reporting segments: DECIDED**
+Segment-level margin uses real reported operating income only (from segments_reported.csv).
+- `QUARTERLY_FINANCIALS.operating_income` stores real operating income for PBP/IC/MPC.
+- `unit_cost_ratio` on PRODUCT is SYNTHETIC ONLY — used by `gen_synthetic_sales.py` to generate `FACT_SALES.cost_amount` for demo/load purposes. It is never queried for margin reporting and is never presented as real cost data.
+- `sp_margin_decomposition` computes effects from FACT_SALES (synthetic transactions) but all revenue baselines come from QUARTERLY_FINANCIALS (real).
+- FACT_SALES.cost_amount is nullable. Gaming synthetic rows set cost_amount=NULL (no Gaming cost data disclosed).
+- No Gaming cost, operating income, or margin anywhere. GAMING_REVENUE_SERIES.operating_income is always NULL.
 
-**Q2 — Margin / cost for the three reporting segments:**
-The old design used synthetic `unit_cost` ratios to approximate segment COGS. Options:
-- **Option A (recommended):** Use real segment operating income from 10-Q/10-K (sourced via Option A above). Gross margin = revenue − COGS (if COGS is disclosed at segment level; Microsoft publishes "Gross margin" per segment in its earnings releases). Label it "real sourced" in the report.
-- **Option B:** Keep synthetic cost ratios per segment, clearly labelled "synthetic approximation" in every view, report, and MARGIN_DB.md. `unit_cost_ratio` on PRODUCT stays. No cost or margin for Gaming in any option.
-- **Option C:** Hybrid — use real gross margin where Microsoft discloses it (PBP, IC, MPC) and synthetic cost ratios only as a fallback.
-
-No Gaming cost or margin in any option.
-
-**Q3 — analyst_demo and the heavy query without Gaming as a segment:**
-`analyst_demo` is currently mapped to the "Gaming" segment in USER_SEGMENT_MAP. Since Gaming is no longer a COMPANY_SEGMENT row (it is in GAMING_REVENUE_SERIES), the segment filter in `v_sales` and `v_financials` will return no rows for `analyst_demo`. Options:
-- **Option A:** Remap `analyst_demo` → MPC segment. The heavy demo query runs on MPC synthetic sales. Gaming revenue is visible via a separate `v_gaming_revenue` view.
-- **Option B:** Keep a synthetic "Gaming" row in COMPANY_SEGMENT (segment_id only; never a row in QUARTERLY_FINANCIALS), so `analyst_demo` still scopes to Gaming-tagged FACT_SALES rows. GAMING_REVENUE_SERIES remains separate for real sourced data.
-- **Option C:** Change `analyst_demo`'s persona to "MPC analyst" and update the demo script accordingly.
-
-Which option do you prefer?
+**Q3 — analyst_demo segment mapping: DECIDED**
+- `analyst_demo` is mapped to MPC segment, product_line='Gaming' in USER_SEGMENT_MAP.
+- `v_sales` filters to (segment_id IN USM AND (USM.product_line IS NULL OR USM.product_line = PRODUCT.product_line)).
+- This means `analyst_demo` sees only FACT_SALES rows for products with product_line='Gaming' (the 40 Gaming products seeded under MPC).
+- The heavy demo query runs on Gaming-tagged rows within the MPC partition — this is the correct demo target.
+- `v_financials` returns MPC-level financials for analyst_demo (segment_id = MPC). Real Gaming revenue is accessed via a separate view `v_gaming_revenue` (SELECT * FROM GAMING_REVENUE_SERIES) when needed.
+- No persona change required. The analyst_demo persona remains "Gaming analyst" scoped within MPC.
 
 ## 13. Packages and installs
 
