@@ -201,11 +201,14 @@ Six-stage implementation plan following the staged development process (Requirem
 
 - [ ] 2. Stage 2 — ETL Pipeline
 
-  - [x] 2.1 Write fetch_edgar.py
+  - [ ] 2.1 Write fetch_edgar.py
+    - **UNTICKED — Q4 derivation bug found (pending fix and re-run)**
+    - Bug: EDGAR fp=Q2 and fp=Q3 values are YTD-cumulative (6-month and 9-month totals). The current derivation computes Q4 = FY − (Q1 + Q2_ytd + Q3_ytd) which over-subtracts and produces large negative Q4 values (e.g. −78,327M for FY2010). Correct formula: Q4 = FY − Q3_ytd (the 9-month YTD figure equals Q1+Q2+Q3; subtracting it from FY_annual gives Q4 directly).
+    - Also: msft_facts.json only covered FY2010–FY2011 on last run; needs re-fetch with valid SEC_USER_AGENT.
     - GET `https://data.sec.gov/api/xbrl/companyfacts/CIK0000789019.json` with `User-Agent` header from `SEC_USER_AGENT` env var
     - Require HTTP 200; non-200 → log UTC timestamp + URL + exit 1
     - Deduplicate restatements: keep latest `filed_date` per `(period, metric)`
-    - Derive Q4 values: Q4 = FY_annual − (Q1 + Q2 + Q3); if FY annual is not available for a metric, log the missing quarter; document derivation method and any gaps in `docs/MARGIN_DB.md`
+    - Derive Q4 values: Q4 = FY_annual − Q3_ytd (NOT FY − Q1 − Q2_ytd − Q3_ytd); if FY annual is not available for a metric, log the missing quarter; document derivation method and any gaps in `docs/MARGIN_DB.md`
     - Print missing fiscal quarters to stdout
     - Write result to `data/raw/msft_facts.json`
     - _Requirements: 4.1, 4.10, 21.1_
@@ -293,7 +296,7 @@ Six-stage implementation plan following the staged development process (Requirem
       - `INSERT INTO CONFIG (config_key, config_value) VALUES ('DB_ALLOCATED_MB', computed_value) ON DUPLICATE KEY UPDATE config_value = VALUES(config_value)`
     - _Requirements: 4.6, 21.1_
 
-  - [x] 2.11 Write load_sales.sh — ETL master orchestrator
+  - [ ] 2.11 Write load_sales.sh — ETL master orchestrator
   - [ ] 2.11 Write load_sales.sh — ETL master orchestrator
     - **UPDATED (pending owner re-verification)**: Step 3b `load_segments_gaming.py` added between segments.csv human confirmation and load_steam.py
     - ETL sequence: `fetch_edgar.py` → `load_financials.py` → [HUMAN: confirm segments.csv] → `load_segments_gaming.py` → `load_steam.py` → `load_trends.py` → [HUMAN: confirm events.csv] → `load_events.py` → `compute_event_windows.py` → `gen_synthetic_sales.py` → LOAD DATA LOCAL INFILE loop → reconciliation check

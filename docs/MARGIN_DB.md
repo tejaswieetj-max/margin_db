@@ -358,15 +358,16 @@ After each stage the agent writes `docs/stage_N_report.md`, commits to git, and 
 Microsoft does not always file a standalone 10-Q for Q4 because its annual 10-K implicitly covers the full fiscal year. `etl/fetch_edgar.py` handles this as follows:
 
 1. **Annual anchor**: For each fiscal year, the entry with `fp="FY"` or `form="10-K"` (and the latest `filed` date, to handle restatements) provides the full-year value.
-2. **Derivation formula**: `Q4 = FY_annual_value − (Q1_value + Q2_value + Q3_value)`, where Q1–Q3 values are the latest-filed quarterly frames for that fiscal year.
-3. **Derived rows** are tagged internally (`"derived": True`) but appear in the output with `filed_date` set to the annual filing's filed date.
-4. **Deduplication**: For every `(fiscal_year, fp)` pair, only the entry with the latest `filed` date is kept; this ensures that restated filings replace earlier versions.
+2. **YTD cumulative reporting**: SEC EDGAR reports Q2 and Q3 as **YTD cumulative values** (Q2 is a 6-month total, Q3 is a 9-month total that already includes Q1+Q2+Q3).
+3. **Derivation formula**: `Q4 = FY_annual_value − Q3_ytd`, where Q3_ytd is the 9-month cumulative total. Since Q3_ytd already includes all of Q1, Q2, and Q3, subtracting it from the full-year value yields Q4 directly.
+4. **Derived rows** are tagged internally (`"derived": True`) but appear in the output with `filed_date` set to the annual filing's filed date.
+5. **Deduplication**: For every `(fiscal_year, fp)` pair, only the entry with the latest `filed` date is kept; this ensures that restated filings replace earlier versions.
 
 ### Known gaps
 
 - If the FY annual entry is absent for a given metric and fiscal year, Q4 cannot be derived. The script logs a warning and prints the gap to stdout.
-- If any of Q1, Q2, or Q3 is missing for a fiscal year, Q4 derivation is skipped for that year and metric; the gap is printed to stdout.
-- Derived Q4 values may be negative for metrics where the annual figure was revised downward relative to the quarterly sum (e.g., reclassification restatements). These are kept as-is; the loader should validate them.
+- If Q3 is missing for a fiscal year, Q4 derivation is skipped for that year and metric; the gap is printed to stdout.
+- Derived Q4 values should be positive in normal circumstances. If negative Q4 values appear, they may indicate data quality issues or restatement artifacts and should be investigated.
 
 ### Proxy assumption (Steam lift — monthly)
 

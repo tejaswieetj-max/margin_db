@@ -357,6 +357,15 @@ def run_edgar_validator(
     under-count and over-count. Logs a WARNING for any quarter exceeding
     EDGAR_TOLERANCE (0.5%). Does NOT abort — earnings releases round to
     millions, so small gaps are expected.
+
+    Reports three counts:
+      passed  — abs_delta <= 0.5%
+      warned  — abs_delta >  0.5%
+      skipped — no EDGAR figure available for that (fiscal_year, fiscal_quarter)
+
+    Logs ERROR (not just info) if zero quarters were compared. This catches
+    the case where msft_facts.json covers a different year range than the
+    data in QUARTERLY_FINANCIALS (e.g. stale or incomplete fetch).
     """
     if not edgar_totals:
         logger.info("EDGAR validator skipped (no msft_facts.json data available).")
@@ -377,12 +386,15 @@ def run_edgar_validator(
 
     passed = 0
     warned = 0
+    skipped = 0
     for (fy, fq), edgar_rev in sorted(edgar_totals.items()):
         db_rev = db_totals.get((fy, fq))
         if db_rev is None:
-            # Period not yet loaded (outside the transcribed range); skip
+            # No matching period in QUARTERLY_FINANCIALS for this EDGAR entry
+            skipped += 1
             continue
         if edgar_rev == 0:
+            skipped += 1
             continue
         # Symmetric: catches both under-count and over-count
         delta_pct = abs(db_rev - edgar_rev) / edgar_rev
@@ -396,13 +408,29 @@ def run_edgar_validator(
             )
             warned += 1
         else:
+            logger.info(
+                "EDGAR validator PASS FY%dQ%d: "
+                "PBP+IC+MPC sum=%.2f M  EDGAR total=%.2f M  abs_delta=%.3f%%",
+                fy, fq, db_rev, edgar_rev, delta_pct * 100,
+            )
             passed += 1
 
     logger.info(
-        "EDGAR validator complete: %d quarter(s) within %.1f%%, "
-        "%d quarter(s) warned.",
-        passed, EDGAR_TOLERANCE * 100, warned,
+        "EDGAR validator complete: %d passed, %d warned (>%.1f%%), %d skipped "
+        "(no EDGAR figure for that period).",
+        passed, warned, EDGAR_TOLERANCE * 100, skipped,
     )
+    if passed == 0 and warned == 0:
+        logger.error(
+            "EDGAR validator matched ZERO quarters. "
+            "msft_facts.json covers FY%s-FY%s; QUARTERLY_FINANCIALS covers FY%s-FY%s. "
+            "Re-run fetch_edgar.py to refresh msft_facts.json before trusting "
+            "the loaded segment data.",
+            min(k[0] for k in edgar_totals),
+            max(k[0] for k in edgar_totals),
+            min(k[0] for k in db_totals) if db_totals else "?",
+            max(k[0] for k in db_totals) if db_totals else "?",
+        )
 
 
 # ---------------------------------------------------------------------------

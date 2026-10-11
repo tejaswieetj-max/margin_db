@@ -11,10 +11,12 @@ Metrics extracted:
 
 Q4 derivation method (documented in docs/MARGIN_DB.md):
   Microsoft does not always file an explicit Q4 10-Q because the 10-K covers
-  the full fiscal year.  We derive Q4 as:
-      Q4 = FY_annual_value − (Q1 + Q2 + Q3)
+  the full fiscal year. SEC EDGAR reports Q2 and Q3 as YTD cumulative values
+  (Q2 = 6-month total, Q3 = 9-month total). We derive Q4 as:
+      Q4 = FY_annual_value − Q3_ytd
   where FY_annual_value is the value associated with fp="FY" (or form="10-K")
-  for the same fiscal year and metric.  If the FY annual value is not
+  for the same fiscal year and metric, and Q3_ytd is the 9-month cumulative
+  total (which already includes Q1+Q2+Q3). If the FY annual value is not
   available for a given metric we cannot derive Q4 and we log the gap.
 
 Requirements: 4.1, 4.10, 21.1
@@ -109,10 +111,47 @@ def is_quarterly_frame(entry: dict) -> bool:
     We exclude:
       CY* frames (calendar-year TTM entries from the frame field)
       fp == H1 / H2 / 9M      — semi-annual or 9-month frames
+      
+    We also filter by end date to ensure we get the correct fiscal year's data.
+    The end date should match the expected fiscal period end based on Microsoft's
+    fiscal year (ends June 30).
     """
     fp = entry.get("fp", "")
     form = entry.get("form", "")
-    return fp in {"Q1", "Q2", "Q3", "Q4", "FY"} or form == "10-K"
+    fy = entry.get("fy")
+    end = entry.get("end", "")
+    
+    # Basic filter: must be quarterly or annual
+    if not (fp in {"Q1", "Q2", "Q3", "Q4", "FY"} or form == "10-K"):
+        return False
+    
+    # End date filter: For Microsoft FY ending June 30
+    # FY2010 means fiscal year ending June 30, 2010
+    # Q1 ends Sept 30 (of prior calendar year)
+    # Q2 ends Dec 31 (of prior calendar year)  
+    # Q3 ends Mar 31 (of current calendar year)
+    # Q4 ends June 30 (of current calendar year)
+    # FY ends June 30 (of current calendar year)
+    
+    if not fy or not end:
+        return False
+    
+    # Expected end dates for each fiscal quarter/year
+    expected_ends = {
+        "Q1": f"{fy-1}-09-30",  # Q1 ends Sept 30 of prior calendar year
+        "Q2": f"{fy-1}-12-31",  # Q2 ends Dec 31 of prior calendar year
+        "Q3": f"{fy}-03-31",    # Q3 ends Mar 31 of current calendar year
+        "Q4": f"{fy}-06-30",    # Q4 ends June 30 of current calendar year
+        "FY": f"{fy}-06-30",    # FY ends June 30 of current calendar year
+    }
+    
+    if fp in expected_ends:
+        return end == expected_ends[fp]
+    elif form == "10-K":
+        # Annual filing should end on June 30 of the fiscal year
+        return end == f"{fy}-06-30"
+    
+    return False
 
 
 # ---------------------------------------------------------------------------
@@ -188,10 +227,14 @@ def derive_q4(
 ) -> dict[tuple[int, int], dict]:
     """Derive Q4 entries where not already present.
 
-    Q4 = FY_annual - (Q1 + Q2 + Q3)
+    Q4 = FY_annual - Q3_ytd
 
-    If the FY annual is not available, or any of Q1/Q2/Q3 is missing, we log
-    the gap and add a note to missing_quarters.
+    SEC EDGAR reports Q2 and Q3 as YTD cumulative values (Q2 is 6-month total,
+    Q3 is 9-month total which includes Q1+Q2+Q3). Therefore, we only need to
+    subtract Q3_ytd from the full year to get Q4.
+
+    If the FY annual is not available, or Q3 is missing, we log the gap and
+    add a note to missing_quarters.
 
     Returns an updated quarterly map that includes derived Q4 entries.
     """
@@ -217,24 +260,18 @@ def derive_q4(
             print(f"MISSING QUARTER: {msg}")
             continue
 
-        # Need Q1, Q2, Q3
-        q1 = quarterly.get((fy, 1))
-        q2 = quarterly.get((fy, 2))
+        # Need Q3 (which is YTD cumulative: Q1+Q2+Q3)
         q3 = quarterly.get((fy, 3))
-
-        missing = [f"Q{i}" for i, q in [(1, q1), (2, q2), (3, q3)] if q is None]
-        if missing:
-            msg = (
-                f"metric={metric} fy={fy} Q4: "
-                f"missing {', '.join(missing)} — cannot derive Q4"
-            )
+        if q3 is None:
+            msg = f"metric={metric} fy={fy} Q4: Q3 not available — cannot derive Q4"
             logger.warning(msg)
             missing_quarters.append(msg)
             print(f"MISSING QUARTER: {msg}")
             continue
 
         fy_val = ann["val"]
-        derived_val = fy_val - (q1["val"] + q2["val"] + q3["val"])
+        q3_ytd = q3["val"]
+        derived_val = fy_val - q3_ytd
 
         # Use the annual entry's filed date as the filed_date for derived Q4
         result[(fy, 4)] = {
@@ -246,13 +283,11 @@ def derive_q4(
             "derived": True,
         }
         logger.debug(
-            "Derived Q4 for metric=%s fy=%d: %s - (%s+%s+%s) = %s",
+            "Derived Q4 for metric=%s fy=%d: %s (FY) - %s (Q3_ytd) = %s",
             metric,
             fy,
             fy_val,
-            q1["val"],
-            q2["val"],
-            q3["val"],
+            q3_ytd,
             derived_val,
         )
 

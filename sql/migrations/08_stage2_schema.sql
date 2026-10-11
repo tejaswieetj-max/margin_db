@@ -485,6 +485,32 @@ PREPARE _s20 FROM @sql_uq; EXECUTE _s20; DEALLOCATE PREPARE _s20;
 
 
 -- ---------------------------------------------------------------------------
+-- 11. BUSINESS_EVENT: add UNIQUE KEY on (event_type, name, start_date)
+--
+-- load_events.py uses INSERT IGNORE for idempotency. INSERT IGNORE only
+-- suppresses duplicates when a UNIQUE (or PRIMARY) key conflict exists.
+-- Without this key, re-running the loader inserts duplicate rows.
+-- (event_type, name, start_date) is the natural key: the same event type
+-- and name on the same start date cannot be two distinct events.
+-- Full name column used (no prefix); InnoDB's limit is 3072 bytes and
+-- utf8mb4 VARCHAR(200) = 800 bytes, well within that limit.
+-- Guard: only add if not already present.
+-- ---------------------------------------------------------------------------
+SET @has_uq_be = (
+    SELECT COUNT(*) FROM information_schema.STATISTICS
+    WHERE TABLE_SCHEMA = DATABASE()
+      AND TABLE_NAME   = 'BUSINESS_EVENT'
+      AND INDEX_NAME   = 'uq_business_event'
+);
+SET @sql_uq_be = IF(@has_uq_be = 0,
+    'ALTER TABLE BUSINESS_EVENT
+     ADD UNIQUE KEY uq_business_event (event_type, name, start_date)',
+    'SELECT ''uq_business_event already exists on BUSINESS_EVENT'' AS note'
+);
+PREPARE _s21 FROM @sql_uq_be; EXECUTE _s21; DEALLOCATE PREPARE _s21;
+
+
+-- ---------------------------------------------------------------------------
 -- NOTE: After running this migration, re-run sql/07_grants.sql to apply
 -- any updated grants (e.g. SELECT on GAMING_REVENUE_SERIES for business_analyst).
 -- run_migrations.sh does NOT include migration files; apply manually.
@@ -528,4 +554,7 @@ PREPARE _s20 FROM @sql_uq; EXECUTE _s20; DEALLOCATE PREPARE _s20;
 --  10. SELECT TABLE_NAME FROM information_schema.TABLES
 --      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'EVENT_WINDOW_DAY';
 --      → 0 rows (table should not exist)
+--
+--  11. SHOW INDEX FROM BUSINESS_EVENT WHERE Key_name = 'uq_business_event';
+--      → 3 rows (event_type, name, start_date)
 -- =============================================================================

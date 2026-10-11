@@ -60,15 +60,24 @@ EVENTS_CSV_PATH = PROJECT_ROOT / "data" / "raw" / "events.csv"
 
 # ---------------------------------------------------------------------------
 # Allowed ENUM values for event_type
-# Source: BUSINESS_EVENT DDL comment + task specification
+# Allowed event_type values.
+# BUSINESS_EVENT.event_type is VARCHAR(30) — no DDL ENUM constraint.
+# This set is the application-level allowed list from the spec (MARGIN_DB.md §8.2
+# and tasks.md 1.5): game_launch / subscription_promo / seasonal / price_change /
+# acquisition / outage / black_friday / earnings_release / promotion.
+# If a future event_type is needed, add it here and to the DB column comment.
 # ---------------------------------------------------------------------------
 
 ALLOWED_EVENT_TYPES: frozenset[str] = frozenset({
     "game_launch",
+    "subscription_promo",
+    "seasonal",
     "price_change",
+    "acquisition",
+    "outage",
     "black_friday",
-    "promotion",
     "earnings_release",
+    "promotion",
 })
 
 # ---------------------------------------------------------------------------

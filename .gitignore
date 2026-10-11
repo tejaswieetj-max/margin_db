@@ -1,6 +1,9 @@
 # Secrets
 .env
 
+# Large Azure trace dataset
+/data/raw/azure_v2/
+
 # Python
 __pycache__/
 *.pyc
