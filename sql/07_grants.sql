@@ -18,6 +18,8 @@ GRANT SELECT ON margin_db.v_financials       TO 'business_analyst';
 GRANT SELECT ON margin_db.v_events           TO 'business_analyst';
 GRANT SELECT ON margin_db.v_forecast_business TO 'business_analyst';
 GRANT SELECT ON margin_db.v_my_queries       TO 'business_analyst';
+GRANT SELECT ON margin_db.v_vm_workload      TO 'business_analyst';
+GRANT SELECT ON margin_db.AZURE_VM           TO 'business_analyst';
 
 -- EXECUTE on analyst stored procedures
 GRANT EXECUTE ON PROCEDURE margin_db.sp_margin_decomposition TO 'business_analyst';
@@ -34,6 +36,7 @@ GRANT SHOW VIEW ON margin_db.v_my_queries        TO 'business_analyst';
 GRANT SHOW VIEW ON margin_db.v_events_min        TO 'business_analyst';
 GRANT SHOW VIEW ON margin_db.v_forecast_database TO 'business_analyst';
 GRANT SHOW VIEW ON margin_db.v_partitions        TO 'business_analyst';
+GRANT SHOW VIEW ON margin_db.v_vm_workload       TO 'business_analyst';
 
 -- ---------------------------------------------------------------------------
 -- ROLE: db_engineer
@@ -55,6 +58,8 @@ GRANT SELECT ON margin_db.AZURE_VM             TO 'db_engineer';
 GRANT SELECT ON margin_db.v_events_min        TO 'db_engineer';
 GRANT SELECT ON margin_db.v_forecast_database TO 'db_engineer';
 GRANT SELECT ON margin_db.v_partitions        TO 'db_engineer';
+GRANT SELECT ON margin_db.v_vm_workload       TO 'db_engineer';
+GRANT SHOW VIEW ON margin_db.v_vm_workload    TO 'db_engineer';
 
 -- SELECT on performance_schema (global privilege)
 GRANT SELECT ON performance_schema.* TO 'db_engineer';

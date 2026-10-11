@@ -1,13 +1,8 @@
-/**
- * ProtectedRoute — redirects unauthenticated users to /login.
- *
- * Wraps child routes; renders <Outlet /> when a valid token exists,
- * otherwise navigates to /login preserving the attempted location.
- */
 import { Navigate, Outlet, useLocation } from 'react-router-dom'
+import { getToken } from '../api/client.js'
 
 function ProtectedRoute() {
-  const token = localStorage.getItem('token')
+  const token = getToken()
   const location = useLocation()
 
   if (!token) {

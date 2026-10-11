@@ -1,13 +1,5 @@
-/**
- * RoleRoute — restricts access to routes based on the JWT role claim.
- *
- * Props:
- *   - allowedRoles: string[]  e.g. ['business_analyst'] or ['db_engineer']
- *
- * Renders <Outlet /> when the user's role is in allowedRoles.
- * Returns HTTP-403-style redirect to /unauthorized otherwise.
- */
 import { Navigate, Outlet } from 'react-router-dom'
+import { getToken } from '../api/client.js'
 
 function parseJwt(token) {
   try {
@@ -19,15 +11,15 @@ function parseJwt(token) {
 }
 
 function RoleRoute({ allowedRoles = [] }) {
-  const token = localStorage.getItem('token')
+  const token = getToken()
   const user = token ? parseJwt(token) : null
 
-  if (!user) {
+  if (!token || !user) {
     return <Navigate to="/login" replace />
   }
 
   if (!allowedRoles.includes(user.role)) {
-    return <Navigate to="/unauthorized" replace />
+    return <Navigate to="/login" replace />
   }
 
   return <Outlet />

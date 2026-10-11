@@ -1,13 +1,5 @@
-/**
- * useAuth — authentication state and helpers.
- *
- * Reads the JWT from localStorage, parses the payload, and exposes:
- *   - token: raw JWT string (or null)
- *   - user: decoded payload { sub, role } (or null)
- *   - login(token): persist token and refresh state
- *   - logout(): clear token and redirect to /login
- */
 import { useState, useCallback } from 'react'
+import client, { setToken, clearToken, getToken } from '../api/client.js'
 
 function parseJwt(token) {
   try {
@@ -19,19 +11,32 @@ function parseJwt(token) {
 }
 
 export function useAuth() {
-  const [token, setToken] = useState(() => localStorage.getItem('token'))
-  const user = token ? parseJwt(token) : null
+  const currentToken = getToken()
+  const [tokenState, setTokenState] = useState(currentToken)
+  const decoded = tokenState ? parseJwt(tokenState) : null
+  const role = decoded?.role ?? null
+  const isAuthenticated = Boolean(tokenState)
 
-  const login = useCallback((newToken) => {
-    localStorage.setItem('token', newToken)
-    setToken(newToken)
+  const login = useCallback(async (username, password) => {
+    const response = await client.post('/auth/login', { username, password })
+    const { token, role: userRole } = response.data
+    setToken(token)
+    setTokenState(token)
+    return { token, role: userRole }
   }, [])
 
   const logout = useCallback(() => {
-    localStorage.removeItem('token')
-    setToken(null)
-    window.location.href = '/login'
+    clearToken()
+    setTokenState(null)
+    window.location.replace('/login')
   }, [])
 
-  return { token, user, login, logout }
+  return {
+    token: tokenState,
+    role,
+    isAuthenticated,
+    user: decoded,
+    login,
+    logout,
+  }
 }

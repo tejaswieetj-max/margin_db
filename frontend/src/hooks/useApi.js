@@ -1,11 +1,3 @@
-/**
- * useApi — thin wrapper around the axios client that manages loading / error state.
- *
- * Usage:
- *   const { data, loading, error, request } = useApi()
- *   await request('get', '/events')
- *   await request('post', '/sql', { sql: 'SELECT ...' })
- */
 import { useState, useCallback } from 'react'
 import client from '../api/client.js'
 
@@ -14,16 +6,22 @@ export function useApi() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
 
-  const request = useCallback(async (method, url, body = undefined) => {
+  const request = useCallback(async (method, url, body = undefined, config = {}) => {
     setLoading(true)
     setError(null)
     try {
-      const response = await client[method](url, body)
+      const fn = client[method.toLowerCase()].bind(client)
+      let response
+      if (['post', 'put', 'patch'].includes(method.toLowerCase())) {
+        response = await fn(url, body, { timeout: 10000, ...config })
+      } else {
+        response = await fn(url, { timeout: 10000, ...config })
+      }
       setData(response.data)
       return response.data
     } catch (err) {
-      const message =
-        err.response?.data?.detail ?? err.message ?? 'Unknown error'
+      setData(null) // Clear page data on error
+      const message = err.response?.data?.detail ?? err.message ?? 'Unknown error'
       setError(message)
       throw err
     } finally {
@@ -31,5 +29,5 @@ export function useApi() {
     }
   }, [])
 
-  return { data, loading, error, request }
+  return { data, loading, error, request, setData, setError }
 }

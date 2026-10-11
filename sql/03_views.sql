@@ -189,7 +189,7 @@ WHERE FORECAST.kind = 'database';
 
 -- -----------------------------------------------------------------------------
 -- 8. v_partitions
---    Partition metadata for FACT_SALES from information_schema.
+--    Partition metadata for AZURE_VM and FACT_SALES from information_schema.
 --    No filter.
 -- -----------------------------------------------------------------------------
 DROP VIEW IF EXISTS v_partitions;
@@ -197,4 +197,26 @@ CREATE SQL SECURITY DEFINER VIEW v_partitions AS
 SELECT *
 FROM information_schema.PARTITIONS
 WHERE TABLE_SCHEMA = DATABASE()
-  AND TABLE_NAME = 'FACT_SALES';
+  AND TABLE_NAME IN ('AZURE_VM', 'FACT_SALES');
+
+-- -----------------------------------------------------------------------------
+-- 9. v_vm_workload
+--    Row-level view on AZURE_VM with no segment filter and no alias on AZURE_VM.
+-- -----------------------------------------------------------------------------
+DROP VIEW IF EXISTS v_vm_workload;
+CREATE SQL SECURITY DEFINER VIEW v_vm_workload AS
+SELECT
+    vm_id,
+    subscription_id,
+    deployment_id,
+    trace_day,
+    created_at,
+    deleted_at,
+    max_cpu,
+    avg_cpu,
+    p95_max_cpu,
+    vm_category,
+    vcpu_bucket,
+    memory_bucket
+FROM AZURE_VM;
+

@@ -1,35 +1,45 @@
-/**
- * Axios HTTP client pre-configured for the Margin-DB backend API.
- *
- * - Base URL: Vite's VITE_API_URL env var, defaulting to http://localhost:8000
- * - Attaches the JWT stored in localStorage as a Bearer token on every request.
- * - On 401 responses the token is cleared and the user is redirected to /login.
- */
 import axios from 'axios'
 
-const BASE_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
+const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
+
+let _token = null
+
+export function setToken(token) {
+  _token = token
+}
+
+export function clearToken() {
+  _token = null
+}
+
+export function getToken() {
+  return _token
+}
 
 const client = axios.create({
   baseURL: BASE_URL,
+  timeout: 10000,
   headers: { 'Content-Type': 'application/json' },
 })
 
-// Attach JWT to every outgoing request
+// Request interceptor attaches module-level _token
 client.interceptors.request.use((config) => {
-  const token = localStorage.getItem('token')
-  if (token) {
-    config.headers['Authorization'] = `Bearer ${token}`
+  if (_token) {
+    config.headers['Authorization'] = `Bearer ${_token}`
   }
   return config
 })
 
-// Handle 401 — token expired or missing
+// Response interceptor handles 401 redirection with /login exception
 client.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
-      localStorage.removeItem('token')
-      window.location.href = '/login'
+      const isLoginRequest = error.config?.url?.includes('/login')
+      if (!isLoginRequest) {
+        clearToken()
+        window.location.replace('/login')
+      }
     }
     return Promise.reject(error)
   },

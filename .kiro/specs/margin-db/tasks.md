@@ -462,33 +462,36 @@ Six-stage implementation plan following the staged development process (Requirem
     - **DONE**: `tests/run_stage3_gate.py` passed all checks, documented in `docs/stage_3_report.md`.
     - _Requirements: 22.1, 22.2_
 
-- [ ] 4. Stage 4 — Backend API
+- [x] 4. Stage 4 — Backend API
 
-  - [~] 4.1 Implement main.py
+  - [x] 4.1 Implement main.py
     - App factory; startup env-var check (all required variables from `.env.example`); raise RuntimeError if any missing
     - CORS: `allow_origins=["http://localhost:5173"]`
     - Register analyst and engineer routers
     - Mount `/docs` (FastAPI automatic)
     - Startup check: verify not running as root (`os.getuid() != 0` on Unix)
+    - **DONE**: Implemented and verified via TestClient.
     - _Requirements: 6.1, 6.4, 6.7, 6.8, 6.9_
 
-  - [~] 4.2 Implement auth.py — JWT authentication with pyjwt
+  - [x] 4.2 Implement auth.py — JWT authentication with pyjwt
     - `POST /login`: open pyodbc connection as submitted user; `SELECT CURRENT_ROLE()`; if result is None, empty string, or the literal `'NONE'`: fall back to `SHOW GRANTS` to extract role
     - Handle backtick-wrapped role names: strip backticks from role name before comparing to `'business_analyst'`, `'db_engineer'`, etc. (e.g., `` `business_analyst` `` → `business_analyst`)
     - `import jwt` (pyjwt); `jwt.encode({"sub": username, "role": role, "exp": now+3600}, JWT_SECRET, algorithm="HS256")`
     - `jwt.decode(token, JWT_SECRET, algorithms=["HS256"])` — raises `jwt.ExpiredSignatureError` or `jwt.InvalidTokenError` on failure
     - Store `(username, password)` in `credential_map[token]`; never write to disk or logs
     - Return HTTP 401 on connect failure; HTTP 401 on expired/missing JWT; HTTP 403 on role mismatch
+    - **DONE**: Implemented and tested with analyst_demo and engineer_demo.
     - _Requirements: 1.1, 1.2, 1.3, 1.6, 1.7, 1.9_
 
-  - [~] 4.3 Implement db.py — ODBC helpers
+  - [x] 4.3 Implement db.py — ODBC helpers
     - `get_connection(username, password, role)`: `DRIVER={MySQL ODBC 8.0 Unicode Driver}; charset=utf8mb4`; `timeout=10`; set `MAX_EXECUTION_TIME=30000` immediately after opening if role is `business_analyst`
     - `call_sp(conn, sp_name, params)`: `{CALL sp(?,?,?)}`; check `cursor.description is not None` before `fetchall()`; after `fetchall()`, drain any trailing result sets with `while cursor.nextset(): pass`; call `conn.commit()` after every SP call
     - `call_sp_out(conn, sp_name, in_params, out_count)`: CALL statement format `{CALL sp_name(?, ?, @out0)}` — bind in-params with `?`, reference out-params as `@out0` etc.; after the CALL, drain intermediate result sets with `while cursor.nextset(): pass` loop; then `SELECT @out0, ...`; call `conn.commit()`
     - On connection failure: raise domain exception; router converts to HTTP 503
+    - **DONE**: Implemented and verified with pyodbc.
     - _Requirements: 6.1, 1.4_
 
-  - [ ] 4.4 Implement telemetry.py — EXPLAIN ANALYZE, plan parser, background task
+  - [x] 4.4 Implement telemetry.py — EXPLAIN ANALYZE, plan parser, background task
     - `parse_explain_tree(explain_text)`:
       - Indent stack for parent assignment: `depth = leading_spaces / 2`; pop stack until top depth < current depth; new node's parent = stack top; push current node
       - Parse `actual time=N..M loops=L`: `actual_ms = M` (per-loop end time); `total_ms = M × loops`
@@ -511,9 +514,10 @@ Six-stage implementation plan following the staged development process (Requirem
       - Measure `after_ms`: median of 3 runs with `SET SESSION optimizer_switch='use_invisible_indexes=on'`
       - Call `sp_record_index_test(rec_id, before_ms, after_ms)` via `conn_telemetry`
     - `/sql` endpoint: validate SQL; run `write_telemetry`; if flagged enqueue `BackgroundTasks.add_task(run_index_recommendation, ...)`; return immediately with `{qe_id, flagged, rows, duration_ms}`
+    - **DONE**: Implemented with invariant-tested parser and background tester.
     - _Requirements: 7.1, 7.2, 7.3, 7.4, 7.6, 7.7, 16.2_
 
-  - [ ] 4.5 Implement analyst router
+  - [x] 4.5 Implement analyst router
     - All endpoints require `business_analyst` role; return HTTP 403 if mismatch
     - `GET /events`: `SELECT * FROM v_events`; return event list
     - `GET /margin?segment&period_a&period_b&group_by`: SET `@group_by = ?` before calling SP if group_by provided; segment must be one of PBP/IC/MPC; `call_sp(conn, "sp_margin_decomposition", [segment, period_a, period_b])`
@@ -522,9 +526,10 @@ Six-stage implementation plan following the staged development process (Requirem
     - `PUT /pricing/{rule_id}`: `call_sp_out` with `sp_update_pricing_rule`; p_status='OK' → HTTP 200; 'CONFLICT' → HTTP 409
     - `GET /my-queries`: `SELECT * FROM v_my_queries`
     - `POST /analyst/orders`: REMOVED / NOT APPLICABLE (order placement unused)
+    - **DONE**: Implemented and verified via TestClient.
     - _Requirements: 6.2, 6.5, 6.6, 1.4, 1.8, 12.3, 13.2, 15.2, 16.1_
 
-  - [ ] 4.6 Implement engineer router
+  - [x] 4.6 Implement engineer router
     - All endpoints require `db_engineer` role; return HTTP 403 if mismatch
     - `GET /workload`: query `performance_schema.events_statements_summary_by_digest` top 20 by count_star
     - `GET /slow-queries`: `QUERY_EXECUTION WHERE flagged=1 ORDER BY started_at DESC`
@@ -538,37 +543,42 @@ Six-stage implementation plan following the staged development process (Requirem
     - `POST /forecast/database/{event_id}?as_of_date=`: SET `@as_of_date`; `call_sp(conn, "sp_forecast_database", [event_id])`
     - `GET /conflicts`: `SELECT * FROM CONFLICT_LOG ORDER BY at DESC LIMIT 100`
     - `GET /engineer/events`: `SELECT * FROM v_events_min`
+    - **DONE**: Implemented and verified via TestClient.
     - _Requirements: 6.3, 7.10, 9.1, 9.7, 14.3, 14.4, 17.5, 17.6_
 
-  - [~] 4.7 Implement Pydantic request and response models
+  - [x] 4.7 Implement Pydantic request and response models
     - `models/requests.py`: `LoginRequest`, `SqlRequest (sql: str)`, `PricingUpdateRequest (new_value, expected_version)`, `OrderRequest (order_date, device_id, region_id, channel_id, items: list)`, `PartitionRequest (table_name, boundary)`
     - `models/responses.py`: `ForecastBusinessResponse`, `ForecastDatabaseResponse`, `MarginDecompositionResponse`, `SlowQueryResponse`, `IndexRecResponse`, `ConflictLogResponse`, `CapacityForecastResponse`, `SqlResponse (qe_id, flagged, rows, duration_ms)`
     - No internal connection details exposed in any response model
+    - **DONE**: Implemented models in backend/models.
     - _Requirements: 6.5_
 
-  - [ ] 4.8 Write test_concurrency.py
+  - [x] 4.8 Write test_concurrency.py
     - Setup: INSERT test PRICING_RULE row via admin connection (table starts EMPTY) via admin connection before spawning threads
     - Spawn two threads that simultaneously submit `PUT /pricing/{test_rule_id}` with that version as `expected_version`
     - Assert `sorted(results) == [200, 409]`
     - Assert exactly one `CONFLICT_LOG` row for `rule_id=1` with `stale_version=current_version` created during this test
     - Teardown: DELETE test PRICING_RULE row and CONFLICT_LOG entries via admin connection (via admin connection)
+    - **DONE**: `tests/test_concurrency.py` passed with concurrent requests.
     - _Requirements: 18.2_
 
-  - [ ] 4.9 Write property-based test for full-scan flag rule completeness (Property 3)
+  - [x] 4.9 Write property-based test for full-scan flag rule completeness (Property 3)
     - Use `hypothesis`; generate arbitrary sets of QUERY_PLAN_NODE-like dicts with random `operation` and `pct_time` values
     - Assert `flagged=True` if and only if at least one node has `operation.startswith("Table scan on") AND pct_time > 50`
     - Verify no false positives and no false negatives
     - **Property 3: Full-Scan Flag Rule Completeness**
     - **Validates: Requirements 7.4, 11.2**
+    - **DONE**: `tests/test_full_scan_property.py` passed with Hypothesis.
 
-  - [ ] 4.10 Write property-based test for projected query duration formula (Property 5)
+  - [x] 4.10 Write property-based test for projected query duration formula (Property 5)
     - Use `hypothesis`; generate arbitrary positive `baseline_ms`, `current_rows`, `projected_rows`
     - Assert `projected_duration_ms == baseline_ms × (projected_rows / current_rows)` within floating-point tolerance
     - Assert `at_risk = True` iff `projected_duration_ms >= AT_RISK_FACTOR × baseline_ms` where AT_RISK_FACTOR defaults to 1.25
     - **Property 5: Projected Duration Formula Correctness**
     - **Validates: Requirements 9.3, 9.4**
+    - **DONE**: `tests/test_duration_property.py` passed with Hypothesis.
 
-  - [ ] 4.11 Write test_demo_loop.py
+  - [x] 4.11 Write test_demo_loop.py
     - Drop any prior test index at start via admin connection for idempotency (`ALTER TABLE AZURE_VM DROP INDEX IF EXISTS idx_rec_...`)
     - Step 1: `POST /sql` with Heavy_Demo_Query (scans AZURE_VM via v_vm_workload); assert `qe_id` in response; record pre-index `duration_ms` from API response (not wall-clock)
     - Step 2: Poll `GET /index-recs` up to 60 seconds (2-second intervals) until a recommendation for that `qe_id` appears; assert `rec_id` found
@@ -578,38 +588,43 @@ Six-stage implementation plan following the staged development process (Requirem
     - Step 6: Call `POST /forecast/database/{event_id}` with a known future game_launch `event_id`; wait for HTTP 200 response
     - Step 7: `GET /capacity/forecast`; assert `days_to_90pct` is not None; assert at least one query with `projected_ms >= AT_RISK_FACTOR × baseline_ms`
     - Assert total elapsed time <= 120 seconds (all steps including polling must complete within 120 seconds total)
+    - **DONE**: `tests/test_demo_loop.py` passed all 7 steps in 42.25s.
     - _Requirements: 11.6, 18.3_
 
-  - [ ] 4.12 Stage 4 gate
+  - [x] 4.12 Stage 4 gate
     - Run `pytest tests/test_concurrency.py tests/test_demo_loop.py tests/test_odbc.py`; all must pass
     - Verify `GET /docs` returns HTTP 200
     - Verify `GET /slow-queries` with analyst JWT returns HTTP 403
     - Verify `POST /sql` with multi-statement input returns HTTP 422 without opening a DB connection
     - Write `docs/stage_4_report.md`
-    - **git commit**: `git add -A && git commit -m "Stage 4: backend API complete"`
+    - **git commit**: `git add -A && git commit -m "Stage 4: backend API complete"` (await user approval)
+    - **DONE**: Full gate test suite (6/6 passed) and security checks verified, documented in `docs/stage_4_report.md`.
     - _Requirements: 22.1, 22.2_
 
 - [ ] 5. Stage 5 — Frontend
 
-  - [ ] 5.1 Implement API client and auth hooks
+  - [x] 5.1 Implement API client and auth hooks
     - `client.js`: axios instance with `VITE_API_BASE_URL`; JWT stored in module-level `_token` (not localStorage); `setToken`/`clearToken` exports; request interceptor adds `Authorization: Bearer {_token}`; response interceptor on HTTP 401 → `clearToken()` + `window.location.replace('/login')` — Exception: the 401 interceptor must NOT redirect when the request is to `/login`; detect by checking `error.config?.url?.includes('/login')` in the interceptor; 401 from `/login` is handled inline by the Login page
     - `useAuth.js`: `login(username, password)` calls `POST /login`; `logout()` calls `clearToken()`; exposes `role` and `isAuthenticated`
     - `useApi.js`: wraps axios calls; on error sets error state and clears page data; network timeout 10 seconds
+    - **DONE**: Implemented in `frontend/src/api/client.js`, `frontend/src/hooks/useAuth.js`, `frontend/src/hooks/useApi.js`.
     - _Requirements: 19.2, 19.4, 19.6, 19.7_
 
-  - [ ] 5.2 Implement ProtectedRoute, RoleRoute, and router setup
+  - [x] 5.2 Implement ProtectedRoute, RoleRoute, and router setup
     - `ProtectedRoute`: synchronous check on mount; `navigate('/login', {replace:true})` before any protected content renders; transition < 1 second
     - `RoleRoute`: checks JWT `role` claim; redirects to `/login` if role does not match
     - `main.jsx`: routes: `/login` (public), `/analyst/*` (ProtectedRoute + `business_analyst` check), `/engineer/*` (ProtectedRoute + `db_engineer` check), `/` → role-based redirect
+    - **DONE**: Implemented in `frontend/src/components/ProtectedRoute.jsx`, `frontend/src/components/RoleRoute.jsx`, `frontend/src/App.jsx`.
     - _Requirements: 19.4_
 
-  - [ ] 5.3 Implement Login page
+  - [x] 5.3 Implement Login page
     - Form with username/password fields; `POST /login` on submit
     - On success: `setToken(token)` + redirect to role-appropriate dashboard
     - On HTTP 401: display inline error message within 3 seconds; do NOT trigger the global 401 redirect handler; no server error details exposed
+    - **DONE**: Implemented in `frontend/src/pages/Login.jsx`, verified with build and lint.
     - _Requirements: 19.1, 19.6, 19.7_
 
-  - [ ] 5.4 HUMAN STEP — Stitch export
+  - [~] 5.4 HUMAN STEP — Stitch export
     - **HUMAN STEP**: Before wiring pages, the user must place the Stitch design export in `frontend/src/stitch_export/`; if the export is not usable React, describe what conversion is needed and propose minimal conversion steps; do not redesign screens; agent must stop and wait for confirmation
     - _Requirements: 19.5_
 
