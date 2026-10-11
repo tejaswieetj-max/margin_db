@@ -148,7 +148,7 @@ Six-stage implementation plan following the staged development process (Requirem
 
   - [x] 1.7 Write 07_grants.sql — ALL GRANT statements (only file with GRANTs)
     - GRANT to `business_analyst`: SELECT on `v_vm_workload`, `v_financials`, `v_events`, `v_forecast_business`, `v_my_queries`; EXECUTE on `sp_margin_decomposition`, `sp_forecast_business`, `sp_update_pricing_rule`, `sp_place_order`; SHOW VIEW on all `v_*` views
-    - GRANT to `db_engineer`: SELECT on `QUERY_EXECUTION`, `QUERY_PLAN_NODE`, `INDEX_RECOMMENDATION`, `DB_SIZE_SNAPSHOT`, `CONFLICT_LOG`, `v_events_min`, `v_forecast_database`, `v_partitions`; SELECT on `performance_schema`; EXECUTE on `sp_apply_index`, `sp_reject_index`, `sp_add_partition`, `sp_snapshot_sizes`, `sp_forecast_database`; SHOW VIEW on all `v_*` views
+    - GRANT to `db_engineer`: SELECT on `QUERY_EXECUTION`, `QUERY_PLAN_NODE`, `INDEX_RECOMMENDATION`, `DB_SIZE_SNAPSHOT`, `CONFLICT_LOG`, `v_events_min`, `v_forecast_database`, `v_partitions`, `v_vm_workload`; SELECT on `performance_schema`; EXECUTE on `sp_apply_index`, `sp_reject_index`, `sp_add_partition`, `sp_snapshot_sizes`, `sp_forecast_database`; SHOW VIEW on all `v_*` views
     - Note: `information_schema` is accessible to all authenticated MySQL users by default; no explicit GRANT is needed for db_engineer to query information_schema.
     - GRANT to `role_telemetry`: INSERT+UPDATE on `QUERY_EXECUTION`, `QUERY_PLAN_NODE`, `INDEX_RECOMMENDATION`; EXECUTE on `sp_recommend_index`, `sp_insert_qe`, `sp_insert_qpn`, `sp_record_index_test`, `sp_flag_query`
     - GRANT roles to users: `GRANT business_analyst TO analyst_demo, analyst_all`; `GRANT db_engineer TO engineer_demo`; `GRANT role_telemetry TO svc_telemetry`
@@ -176,10 +176,12 @@ Six-stage implementation plan following the staged development process (Requirem
       - `analyst_demo` denied `SELECT 1 FROM QUERY_PLAN_NODE LIMIT 1` (error 1142)
       - `analyst_demo` denied `SELECT 1 FROM INDEX_RECOMMENDATION LIMIT 1` (error 1142)
       - `analyst_demo` denied `SELECT 1 FROM FACT_SALES LIMIT 1` (error 1142)
+      - `analyst_demo` denied `SELECT 1 FROM AZURE_VM LIMIT 1` (error 1142)
       - `engineer_demo` denied `SELECT 1 FROM FACT_SALES LIMIT 1` (error 1142)
       - `engineer_demo` denied `SELECT 1 FROM ORDERS LIMIT 1` (error 1142)
       - `engineer_demo` denied `SELECT 1 FROM QUARTERLY_FINANCIALS LIMIT 1` (error 1142)
-      - `analyst_demo` can access v_vm_workload (no row count test needed with empty FACT_SALES)
+      - `engineer_demo` denied `SELECT 1 FROM AZURE_VM LIMIT 1` (error 1142)
+      - `analyst_demo`'s `COUNT(*)` on `v_vm_workload` equals the admin's `COUNT(*)` on `AZURE_VM`
     - _Requirements: 2.10, 18.1_
 
   - [x] 1.10 Verify MySQL behaviours and write Stage 1 report
@@ -195,7 +197,7 @@ Six-stage implementation plan following the staged development process (Requirem
     - Run `sql/run_migrations.sh`; verify all 7 files apply without error
     - Run `pytest tests/test_odbc.py::test_odbc_connection tests/test_odbc.py::test_parameterized_query`
     - Run `tests/run_role_tests.sh`; verify all assertions pass
-    - Verify `FACT_SALES` has 21 partitions (20 named + p_catch) in `information_schema.PARTITIONS`
+    - Verify `AZURE_VM` partitions in `information_schema.PARTITIONS` (partition check uses AZURE_VM)
     - Verify all GRANT statements appear only in `07_grants.sql`
     - Write `docs/stage_1_report.md`: run commands, test output, MySQL behaviour verification results, open issues
     - **git commit**: `git add -A && git commit -m "Stage 1: schema, roles, views, routines stubs, grants"`
