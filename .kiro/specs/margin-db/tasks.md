@@ -311,16 +311,16 @@ Six-stage implementation plan following the staged development process (Requirem
     - **HUMAN STEP — mysqldump**: Prompt operator to run `mkdir -p ~/margin_db_backups && mysqldump -u $ADMIN_USER $DB_NAME > ~/margin_db_backups/margin_db_stage2.sql` before proceeding to Stage 3; dump file written outside repo to avoid large files in git history
     - _Requirements: 4.11, 22.1, 22.2_
 
-- [ ] 3. Stage 3 — Stored Routines and DB-Intelligence
+- [x] 3. Stage 3 — Stored Routines and DB-Intelligence
 
-  - [~] 3.1 Implement sp_snapshot_sizes and load-progress snapshots
+  - [x] 3.1 Implement sp_snapshot_sizes and load-progress snapshots
     - Full `sp_snapshot_sizes`: `SET SESSION information_schema_stats_expiry=0`; INSERT INTO `DB_SIZE_SNAPSHOT` from `information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE()`; use `ON DUPLICATE KEY UPDATE` on `snapped_at` (UNIQUE KEY prevents duplicates)
     - Load-progress snapshots: INSERT into `DB_SIZE_SNAPSHOT` after each AZURE_VM batch load (already done in task 2.9b); `INSERT IGNORE` for idempotency
-    - [~] IN PROGRESS: `sp_snapshot_sizes` implemented in `sql/migrations/11_stage3_routines.sql` and applied to DB. Awaiting Stage 3 gate validation.
+    - **DONE**: `sp_snapshot_sizes` implemented in `sql/migrations/11_stage3_routines.sql` and verified.
     - Verify `ev_snapshot_sizes` EVENT is ENABLED in `information_schema.EVENTS`
     - _Requirements: 17.1, 17.2, 17.3_
 
-  - [~] 3.2 Implement sp_margin_decomposition
+  - [x] 3.2 Implement sp_margin_decomposition
     - Replace stub with full logic: intersect the requested segment with the caller's USER_SEGMENT_MAP using `WHERE segment_id IN (SELECT segment_id FROM USER_SEGMENT_MAP WHERE db_user=SUBSTRING_INDEX(USER(),'@',1)) AND name = p_segment`; also apply product_line filter if USM.product_line IS NOT NULL; if no matching rows, return empty result
     - Read from QUARTERLY_FINANCIALS; compute Δoperating_income, Δrevenue, Δmargin_rate per segment; respect basis caveat
     - Revenue effect = Δrevenue × period_A_margin_rate; Margin-rate effect = period_B_revenue × Δmargin_rate
@@ -328,10 +328,10 @@ Six-stage implementation plan following the staged development process (Requirem
     - Return result set: `(component VARCHAR(30), value_delta DECIMAL(20,4))`
     - Support optional `@group_by` session variable for additional output grouping
     - All references to calling user via `SUBSTRING_INDEX(USER(),'@',1)`; no `CURRENT_USER()`
-    - [~] IN PROGRESS: Full 2-component SP applied to DB via `sql/migrations/11_stage3_routines.sql`. Awaiting Stage 3 gate validation.
+    - **DONE**: Full 2-component SP applied via `sql/migrations/11_stage3_routines.sql` and verified across analyst personas.
     - _Requirements: 15.1, 5.1, 5.2, 5.10_
 
-  - [~] 3.3 Implement sp_forecast_business
+  - [x] 3.3 Implement sp_forecast_business
     - Read CONFIG keys at start: EVENT_PRE_MONTHS, EVENT_POST_MONTHS, BASELINE_MONTHS, MIN_BASELINE_MONTHS, FORECAST_LIFT_MONTHS (all default 3); never hardcode these values
     - Baseline: trailing 4-quarter average monthly revenue from QUARTERLY_FINANCIALS (post-2023-10 quarters only, to use post-Activision-acquisition data); verify caller has segment access via USER_SEGMENT_MAP; return empty result set if not permitted
     - Lift source selection (in order of preference):
@@ -359,21 +359,22 @@ Six-stage implementation plan following the staged development process (Requirem
     - Write to FORECAST + FORECAST_LINE; return result set
     - `SUBSTRING_INDEX(USER(),'@',1)` throughout; no `CURRENT_USER()`
     - No Gaming cost, operating income or margin anywhere in this procedure
+    - **DONE**: Implemented in `sql/migrations/12_stage3_remaining.sql` and verified for measured and derived paths.
     - _Requirements: 8.1, 8.2, 8.3, 8.4, 8.5, 8.7, 5.10_
 
-  - [~] 3.4 Implement sp_update_pricing_rule
+  - [x] 3.4 Implement sp_update_pricing_rule
     - Replace stub: `UPDATE PRICING_RULE SET price_value=p_new_value, version=version+1 WHERE rule_id=p_rule_id AND version=p_expected_version`
     - `ROW_COUNT()=1` → `p_status='OK'`; version already incremented
     - `ROW_COUNT()=0` → INSERT CONFLICT_LOG, `p_status='CONFLICT'`; no SIGNAL on mismatch
     - `SUBSTRING_INDEX(USER(),'@',1)` for `attempted_by` in CONFLICT_LOG
-    - [~] IN PROGRESS: Implemented in `sql/migrations/11_stage3_routines.sql`. Awaiting Stage 3 gate validation.
+    - **DONE**: Implemented in `sql/migrations/11_stage3_routines.sql` and validated via property testing.
     - _Requirements: 12.1, 12.2_
 
   - [REMOVED] 3.5 Implement sp_place_order
     - REMOVED / NOT APPLICABLE: Order placement and synthetic transaction tables (ORDERS, ORDER_ITEM, FACT_SALES) are unused with real Azure VM workload data
     - _Requirements: 13.1_
 
-  - [~] 3.6 Implement sp_recommend_index and sp_record_index_test
+  - [x] 3.6 Implement sp_recommend_index and sp_record_index_test
     - `sp_recommend_index(IN p_qe_id BIGINT, IN p_table VARCHAR(64), IN p_columns_csv VARCHAR(500), OUT p_rec_id INT)`:
       1. Deduplicate: check existing active rec for same `(table_name, columns_csv)` with status in ('proposed','testing','applied'); if found, RETURN (no-op)
       2. Whitelist check: `p_table` must be in allowed list (AZURE_VM); `SIGNAL SQLSTATE '45001'` if not
@@ -385,26 +386,26 @@ Six-stage implementation plan following the staged development process (Requirem
          (INVISIBLE before the comma; index is not used by optimizer until engineer approves)
     - `sp_record_index_test(p_rec_id, p_before_ms, p_after_ms)`: `UPDATE INDEX_RECOMMENDATION SET before_ms=p_before_ms, after_ms=p_after_ms WHERE rec_id=p_rec_id`
     - Also implement `sp_flag_query(IN p_qe_id BIGINT)`: `UPDATE QUERY_EXECUTION SET flagged=1 WHERE qe_id=p_qe_id;` (SQL SECURITY DEFINER)
-    - [~] IN PROGRESS: `sp_record_index_test` and `sp_flag_query` in migration 11; `sp_recommend_index` in migration 12.
+    - **DONE**: Implemented in migrations 11 & 12 and verified.
     - _Requirements: 7.5, 7.6, 7.9_
 
-  - [~] 3.7 Implement sp_apply_index and sp_reject_index
+  - [x] 3.7 Implement sp_apply_index and sp_reject_index
     - `sp_apply_index(p_rec_id)`:
       - Before calling ALTER INDEX VISIBLE: verify `after_ms IS NOT NULL`; if NULL, return error result set `SELECT 'Index test not yet complete' AS result`; the engineer router maps this to HTTP 409
       - Verify `status='testing'`; dynamic `ALTER TABLE ... ALTER INDEX ... VISIBLE`; UPDATE status='applied', decided_by, decided_at=NOW(3); return `SELECT 'applied' AS result`
     - `sp_reject_index(p_rec_id)`: verify `status IN ('testing','proposed')`; dynamic `ALTER TABLE ... DROP INDEX`; if ALTER fails (index not existing), return error result set without re-raising; UPDATE status='rejected'; return `SELECT 'rejected' AS result`
-    - [~] IN PROGRESS: Implementing in migration 12.
+    - **DONE**: Implemented in migration 12 and verified.
     - _Requirements: 7.7, 7.8, 7.10_
 
-  - [~] 3.8 Implement sp_add_partition
+  - [x] 3.8 Implement sp_add_partition
     - Dynamic SQL: `REORGANIZE PARTITION p_catch INTO (new named partition + new p_catch MAXVALUE)`
     - Whitelist `p_table_name` (only AZURE_VM allowed); SIGNAL if not
     - Generate partition name from boundary date in `p_FYyyQq` format
     - PREPARE/EXECUTE/DEALLOCATE PREPARE pattern
-    - [~] IN PROGRESS: Implementing in migration 12.
+    - **DONE**: Implemented in migration 12 and verified.
     - _Requirements: 14.2_
 
-  - [ ] 3.9 Implement sp_forecast_database
+  - [x] 3.9 Implement sp_forecast_database
     - Replace stub with linear regression on DB_SIZE_SNAPSHOT (last 90 days)
     - Read `DB_ALLOCATED_MB` from `CONFIG WHERE config_key='DB_ALLOCATED_MB'`; fall back to `@db_allocated_mb` session variable if CONFIG row absent
     - Read `AT_RISK_FACTOR` from `CONFIG WHERE config_key='AT_RISK_FACTOR'`; default 1.25 if absent
@@ -414,38 +415,41 @@ Six-stage implementation plan following the staged development process (Requirem
     - At-risk queries: `projected_duration_ms = baseline_ms × (projected_rows / current_rows)`; mark at_risk if `>= AT_RISK_FACTOR × baseline_ms`; ordered by event date
     - 30-day warning: write FORECAST_LINE `metric_name='warning_30_day'` if `days_to_90 < 30`
     - `as_of_date` from session variable
+    - **DONE**: Implemented in migration 12 and verified.
     - _Requirements: 9.1, 9.2, 9.3, 9.4, 9.5, 9.6, 9.7, 9.8, 9.9, 17.4, 17.5_
 
-  - [~] 3.10 Implement sp_insert_qe and sp_insert_qpn
+  - [x] 3.10 Implement sp_insert_qe and sp_insert_qpn
     - `sp_insert_qe`: `INSERT INTO QUERY_EXECUTION(...) VALUES(...); SET p_qe_id = LAST_INSERT_ID();` SQL SECURITY DEFINER
     - `sp_insert_qpn`: `INSERT INTO QUERY_PLAN_NODE(...) VALUES(...);` SQL SECURITY DEFINER
     - Both already granted to `role_telemetry` via `07_grants.sql` (task 1.7)
-    - [~] IN PROGRESS: Implemented in `sql/migrations/11_stage3_routines.sql`. Awaiting Stage 3 gate validation.
+    - **DONE**: Implemented in migration 11 and verified.
     - _Requirements: 7.3_
 
-
-  - [ ] 3.11 Write property-based test for optimistic lock (Property 1)
+  - [x] 3.11 Write property-based test for optimistic lock (Property 1)
     - Use `hypothesis`; generate concurrent updates with same `expected_version`
     - Assert exactly one update returns HTTP 200 (status='OK'), all others return HTTP 409 (status='CONFLICT')
     - Assert `version = initial_version + 1` after N attempts; assert `CONFLICT_LOG` has exactly N−1 rows
     - **Property 1: Optimistic Lock Exclusivity**
     - **Validates: Requirements 12.1, 12.2, 12.3**
+    - **DONE**: `tests/test_optimistic_lock_property.py` passed with Hypothesis.
 
-  - [ ] 3.12 Write property-based test for pct_time invariant (Property 2)
+  - [x] 3.12 Write property-based test for pct_time invariant (Property 2)
     - Use `hypothesis`; generate arbitrary `actual_time` (M, per-loop end time) and `loops` values for a set of plan nodes
     - Assert `pct_time = (actual_ms × loops) / root_total_ms × 100` where `root_total_ms = root_actual_ms × root_loops`, within 0.01 tolerance
     - Assert root node `pct_time = 100.0`
     - Assert `duration_ms = root_actual_ms` (M from root node, not root_total_ms)
     - **Property 2: pct_time Sum Invariant**
     - **Validates: Requirements 7.1**
+    - **DONE**: `tests/test_pct_time_property.py` passed with Hypothesis.
 
-  - [ ] 3.13 Write property-based test for SQL console multi-statement rejection (Property 6)
+  - [x] 3.13 Write property-based test for SQL console multi-statement rejection (Property 6)
     - Grammar-based strategy: generate valid `SELECT ...` and `WITH ... SELECT ...` strings (expect accept=True); generate multi-statement strings (semicolon + non-whitespace) and DML strings (expect accept=False)
     - Assert validation function returns True for all valid inputs, False for all invalid inputs
     - **Property 6: SQL Console Multi-Statement Rejection**
     - **Validates: Requirements 16.1**
+    - **DONE**: `tests/test_sql_console_rejection_property.py` and `backend/sql_validator.py` passed with Hypothesis.
 
-  - [ ] 3.14 Stage 3 gate
+  - [x] 3.14 Stage 3 gate
     - Re-run `tests/run_role_tests.sh`; verify no regressions
     - Call `sp_snapshot_sizes()` via MySQL CLI; verify row appears in `DB_SIZE_SNAPSHOT`
     - Verify `information_schema_stats_expiry=0` SESSION effect: run INSERT, re-query `information_schema.TABLES`, verify `data_length` updates; record in `docs/stage_3_report.md`
@@ -455,6 +459,7 @@ Six-stage implementation plan following the staged development process (Requirem
     - Verify EXPLAIN ANALYZE on `AZURE_VM` still shows full table scan (no index added yet)
     - Write `docs/stage_3_report.md`
     - **git commit**: `git add <paths> && git commit -m "Stage 3: stored routines, telemetry SPs"`
+    - **DONE**: `tests/run_stage3_gate.py` passed all checks, documented in `docs/stage_3_report.md`.
     - _Requirements: 22.1, 22.2_
 
 - [ ] 4. Stage 4 — Backend API
