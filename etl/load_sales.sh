@@ -2,24 +2,24 @@
 # =============================================================================
 # load_sales.sh — ETL Master Orchestrator for Margin-DB
 # =============================================================================
-# Runs the full ETL pipeline end-to-end with a 30-minute hard timeout.
+# Runs the full real-data ETL pipeline end-to-end.
 # Requirements: 4.8, 4.10, 4.11
+#
+# IMPORTANT: NO synthetic data generation. All steps use real, operator-supplied
+# data files only. Never run gen_synthetic_sales.py from this script.
 #
 # Pipeline sequence:
 #   1. fetch_edgar.py
 #   2. load_financials.py
 #   3. [HUMAN] confirm data/raw/segments.csv is present
+#   3b. load_segments_gaming.py
 #   4. load_steam.py
 #   5. load_trends.py
 #   6. [HUMAN] confirm data/raw/events.csv is present
 #   7. load_events.py
 #   8. compute_event_windows.py
-#   9. gen_synthetic_sales.py  (writes data/clean/sales_chunk_*.csv)
-#  10. [HUMAN] confirm dropping trg_fact_sales_before_insert for bulk load
-#  11. LOAD DATA LOCAL INFILE loop over data/clean/sales_chunk_*.csv
-#  12. Recreate trg_fact_sales_before_insert via 05_triggers_events.sql
-#  13. gen_synthetic_sales.py --update-config  (writes DB_ALLOCATED_MB to CONFIG)
-#  14. Reconciliation check
+#   9. load_azure_vm.py  (real Azure Public Dataset V2 VM trace; 2,695,548 rows)
+#  10. Final row-count reconciliation check
 #
 # Usage:
 #   cd /path/to/margin-db
@@ -84,8 +84,7 @@ SQL_DIR="${PROJECT_ROOT}/sql"
 DATA_CLEAN="${PROJECT_ROOT}/data/clean"
 DATA_RAW="${PROJECT_ROOT}/data/raw"
 
-TRIGGER_SQL="${SQL_DIR}/05_triggers_events.sql"
-TRIGGER_NAME="trg_fact_sales_before_insert"
+# (No FACT_SALES trigger in real-data pipeline — FACT_SALES is unused)
 
 # ---------------------------------------------------------------------------
 # 5. MySQL CLI helper (no -p flag; MYSQL_PWD provides the password)
@@ -223,134 +222,67 @@ log "Starting ${CURRENT_STEP} ..."
 log "Completed ${CURRENT_STEP}."
 
 # ---------------------------------------------------------------------------
-# Step 9: gen_synthetic_sales.py
+# Step 9: load_azure_vm.py — real Azure Public Dataset V2 VM trace
 # ---------------------------------------------------------------------------
-CURRENT_STEP="gen_synthetic_sales.py"
-log "Starting ${CURRENT_STEP} — this generates sales CSVs in data/clean/ ..."
-"${VENV_PYTHON}" "${ETL_DIR}/gen_synthetic_sales.py"
+CURRENT_STEP="load_azure_vm.py"
+log "Starting ${CURRENT_STEP} — loading Azure VM workload data (2,695,548 rows) ..."
+"${VENV_PYTHON}" "${ETL_DIR}/load_azure_vm.py"
 log "Completed ${CURRENT_STEP}."
 
 # ---------------------------------------------------------------------------
-# Step 10: HUMAN STEP — confirm trigger drop for bulk load performance
+# Step 10: Final row-count reconciliation
 # ---------------------------------------------------------------------------
-CURRENT_STEP="HUMAN confirm trigger drop"
-log "HUMAN STEP: FACT_SALES BEFORE INSERT trigger performance decision."
-echo ""
-echo "  The trigger '${TRIGGER_NAME}' validates product_id and segment_id on every"
-echo "  INSERT into FACT_SALES. Dropping it during the bulk load significantly"
-echo "  improves performance. It will be recreated automatically afterwards."
-echo ""
-read -r -p "  Drop FACT_SALES BEFORE INSERT trigger for bulk load performance? [YES/no]: " CONFIRM_DROP_TRIGGER
-
-if [[ "${CONFIRM_DROP_TRIGGER}" == "YES" ]]; then
-    CURRENT_STEP="DROP TRIGGER ${TRIGGER_NAME}"
-    log "Dropping trigger ${TRIGGER_NAME} for bulk load performance ..."
-    mysql_cli --execute="DROP TRIGGER IF EXISTS ${TRIGGER_NAME};"
-    log "Trigger ${TRIGGER_NAME} dropped."
-    TRIGGER_DROPPED=true
-else
-    log "Operator chose to keep the trigger. Proceeding with trigger active (bulk load may be slower)."
-    TRIGGER_DROPPED=false
-fi
-
-# ---------------------------------------------------------------------------
-# Step 11: LOAD DATA LOCAL INFILE loop
-# ---------------------------------------------------------------------------
-CURRENT_STEP="LOAD DATA LOCAL INFILE loop"
+CURRENT_STEP="row-count reconciliation"
 log "Starting ${CURRENT_STEP} ..."
 
-CHUNK_COUNT=0
-CHUNK_ERRORS=0
+AZURE_COUNT=$(
+    "${VENV_PYTHON}" -c "
+import mysql.connector, os
+from pathlib import Path
+from dotenv import dotenv_values
+env = dotenv_values(Path('${PROJECT_ROOT}/.env'))
+cnx = mysql.connector.connect(
+    host=env['DB_HOST'], port=int(env['DB_PORT']),
+    user=env['ADMIN_USER'], password=env['ADMIN_PASSWORD'],
+    database=env['DB_NAME']
+)
+cur = cnx.cursor()
+cur.execute('SELECT COUNT(*) FROM AZURE_VM')
+print(cur.fetchone()[0])
+cur.close(); cnx.close()
+" 2>/dev/null
+)
 
-# Build list of chunk files; abort if none found
-shopt -s nullglob
-CHUNK_FILES=("${DATA_CLEAN}"/sales_chunk_*.csv)
-shopt -u nullglob
-
-if [[ ${#CHUNK_FILES[@]} -eq 0 ]]; then
-    log "ERROR: No chunk files found matching ${DATA_CLEAN}/sales_chunk_*.csv"
-    log "       gen_synthetic_sales.py may not have written any output."
-    exit 1
-fi
-
-log "Found ${#CHUNK_FILES[@]} chunk file(s) to load."
-
-for CHUNK_FILE in "${CHUNK_FILES[@]}"; do
-    CURRENT_STEP="LOAD DATA LOCAL INFILE '${CHUNK_FILE}'"
-    log "Loading chunk: ${CHUNK_FILE} ..."
-
-    mysql_cli \
-        --local-infile=1 \
-        --execute="
-LOAD DATA LOCAL INFILE '${CHUNK_FILE}'
-INTO TABLE FACT_SALES
-FIELDS TERMINATED BY ','
-OPTIONALLY ENCLOSED BY '\"'
-LINES TERMINATED BY '\n'
-IGNORE 1 LINES
-(sale_date, product_id, segment_id, device_id, region_id, channel_id, qty, gross_amount, discount_amount, @cost)
-SET cost_amount = NULLIF(@cost, '');
-"
-    CHUNK_COUNT=$(( CHUNK_COUNT + 1 ))
-    log "Loaded chunk ${CHUNK_COUNT}/${#CHUNK_FILES[@]}: ${CHUNK_FILE}"
-done
-
-log "LOAD DATA LOCAL INFILE loop complete. ${CHUNK_COUNT} chunk(s) loaded."
-
-# ---------------------------------------------------------------------------
-# Step 12: Recreate trigger (if it was dropped)
-# ---------------------------------------------------------------------------
-if [[ "${TRIGGER_DROPPED}" == "true" ]]; then
-    CURRENT_STEP="recreate trigger ${TRIGGER_NAME}"
-    log "Recreating trigger ${TRIGGER_NAME} from ${TRIGGER_SQL} ..."
-    mysql_cli < "${TRIGGER_SQL}"
-    log "Trigger ${TRIGGER_NAME} recreated."
-fi
-
-# ---------------------------------------------------------------------------
-# Step 13: Update DB_ALLOCATED_MB in CONFIG
-# ---------------------------------------------------------------------------
-CURRENT_STEP="gen_synthetic_sales.py --update-config"
-log "Starting ${CURRENT_STEP} — updating DB_ALLOCATED_MB in CONFIG ..."
-"${VENV_PYTHON}" "${ETL_DIR}/gen_synthetic_sales.py" --update-config
-log "Completed ${CURRENT_STEP}."
-
-# ---------------------------------------------------------------------------
-# Step 14: Reconciliation check
-# ---------------------------------------------------------------------------
-CURRENT_STEP="reconciliation check"
-log "Starting ${CURRENT_STEP} ..."
-
-RECONCILE_SQL="
-SELECT
-    cs.segment_name,
-    qf.fiscal_year,
-    qf.fiscal_quarter,
-    qf.revenue                                              AS target_revenue,
-    SUM(fs.gross_amount) / 1000000.0                        AS actual_revenue_m,
-    ABS(SUM(fs.gross_amount) / 1000000.0 - qf.revenue)
-        / qf.revenue * 100                                  AS pct_diff
-FROM FACT_SALES fs
-JOIN COMPANY_SEGMENT cs   ON cs.segment_id   = fs.segment_id
-JOIN QUARTERLY_FINANCIALS qf
-    ON qf.segment_id     = fs.segment_id
-    AND qf.fiscal_year   = YEAR(fs.sale_date)  -- approximate; proper join via DIM_DATE
-GROUP BY cs.segment_name, qf.fiscal_year, qf.fiscal_quarter
-HAVING pct_diff > 0.1
-ORDER BY pct_diff DESC;
-"
-
-RECON_OUTPUT=$(mysql_cli --execute="${RECONCILE_SQL}" 2>&1 || true)
-
-if [[ -n "${RECON_OUTPUT}" ]]; then
-    log "WARNING: Reconciliation found rows exceeding 0.1% tolerance:"
-    echo "${RECON_OUTPUT}"
-    log "Review reconciliation output above. Pipeline completed but check is advisory."
+if [[ "${AZURE_COUNT}" -eq 2695548 ]]; then
+    log "Reconciliation PASSED — AZURE_VM row count: ${AZURE_COUNT} (expected 2,695,548)."
 else
-    log "Reconciliation check PASSED — all segment/quarter combinations within 0.1% tolerance."
+    log "WARNING: AZURE_VM row count is ${AZURE_COUNT}; expected 2,695,548. Investigate before proceeding."
 fi
+
+QF_COUNT=$(
+    "${VENV_PYTHON}" -c "
+import mysql.connector
+from pathlib import Path
+from dotenv import dotenv_values
+env = dotenv_values(Path('${PROJECT_ROOT}/.env'))
+cnx = mysql.connector.connect(
+    host=env['DB_HOST'], port=int(env['DB_PORT']),
+    user=env['ADMIN_USER'], password=env['ADMIN_PASSWORD'],
+    database=env['DB_NAME']
+)
+cur = cnx.cursor()
+cur.execute('SELECT COUNT(*) FROM QUARTERLY_FINANCIALS')
+print(cur.fetchone()[0])
+cur.close(); cnx.close()
+" 2>/dev/null
+)
+log "QUARTERLY_FINANCIALS row count: ${QF_COUNT}"
+
+log "Reconciliation check complete."
 
 # ---------------------------------------------------------------------------
 # Done
 # ---------------------------------------------------------------------------
 log "ETL pipeline completed successfully."
+
+

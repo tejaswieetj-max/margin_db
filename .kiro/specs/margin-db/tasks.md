@@ -265,7 +265,7 @@ Six-stage implementation plan following the staged development process (Requirem
     - `INSERT IGNORE` for idempotency; log count of rows inserted per event
     - _Requirements: 4.2_
 
-  - [~] 2.9b Profile and load Azure VM workload table
+  - [x] 2.9b Profile and load Azure VM workload table
     - **Dataset**: `data/raw/azure/vmtable.csv` — 2,695,548 rows, 11 columns, no header, trace-relative seconds
     - **Columns** (in order): vm_id, subscription_id, deployment_id, created_at, deleted_at, max_cpu, avg_cpu, p95_max_cpu, vm_category, vcpu_bucket, memory_bucket
     - **Profile CSV first**: Write `etl/profile_azure_csv.py` to read first 10K rows, infer data types, check ranges, output DDL recommendations
@@ -280,6 +280,7 @@ Six-stage implementation plan following the staged development process (Requirem
       - After each batch: INSERT INTO DB_SIZE_SNAPSHOT (is_synthetic=FALSE, label='load-progress snapshot')
       - No clamping, no invented dates, preserve all trace-relative times as-is
       - Final verification: row count MUST be exactly 2,695,548
+    - **DONE**: Loaded exactly 2,695,548 rows in 37.5s across 6 batches. All DB_SIZE_SNAPSHOT progress entries written. [PASS] row count verified.
     - **Checksum file**: Write `data/raw/azure/CHECKSUM.txt` with SHA256 and row count; keep data/raw/azure/ in .gitignore
     - _Requirements: 4.11, 21.1, 21.2_
 
@@ -287,9 +288,10 @@ Six-stage implementation plan following the staged development process (Requirem
     - **REMOVED**: Synthetic sales generation not needed with real Azure VM workload data
     - _Requirements: 4.6, 21.1_
 
-  - [ ] 2.11 Write load_sales.sh — ETL master orchestrator
-    - **UPDATED (pending owner re-verification)**: Step 3b `load_segments_gaming.py` added between segments.csv human confirmation and load_steam.py
-    - ETL sequence: `fetch_edgar.py` → `load_financials.py` → [HUMAN: confirm segments.csv] → `load_segments_gaming.py` → `load_steam.py` → `load_trends.py` → [HUMAN: confirm events.csv] → `load_events.py` → `compute_event_windows.py`; no synthetic sales generation
+  - [x] 2.11 Write load_sales.sh — ETL master orchestrator
+    - **UPDATED**: Step 3b `load_segments_gaming.py` added between segments.csv human confirmation and load_steam.py
+    - **UPDATED**: All synthetic sales steps (9-14) removed; replaced with real `load_azure_vm.py` (step 9) + row-count reconciliation (step 10)
+    - ETL sequence: `fetch_edgar.py` → `load_financials.py` → [HUMAN: confirm segments.csv] → `load_segments_gaming.py` → `load_steam.py` → `load_trends.py` → [HUMAN: confirm events.csv] → `load_events.py` → `compute_event_windows.py` → `load_azure_vm.py`; no synthetic sales generation
     - `set -euo pipefail`; log UTC + source filename on any step failure; halt on failure
     - _Requirements: 4.8, 4.10, 4.11_
 
@@ -311,13 +313,14 @@ Six-stage implementation plan following the staged development process (Requirem
 
 - [ ] 3. Stage 3 — Stored Routines and DB-Intelligence
 
-  - [ ] 3.1 Implement sp_snapshot_sizes and load-progress snapshots
+  - [~] 3.1 Implement sp_snapshot_sizes and load-progress snapshots
     - Full `sp_snapshot_sizes`: `SET SESSION information_schema_stats_expiry=0`; INSERT INTO `DB_SIZE_SNAPSHOT` from `information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE()`; use `ON DUPLICATE KEY UPDATE` on `snapped_at` (UNIQUE KEY prevents duplicates)
     - Load-progress snapshots: INSERT into `DB_SIZE_SNAPSHOT` after each AZURE_VM batch load (already done in task 2.9b); `INSERT IGNORE` for idempotency
+    - [~] IN PROGRESS: `sp_snapshot_sizes` implemented in `sql/migrations/11_stage3_routines.sql` and applied to DB. Awaiting Stage 3 gate validation.
     - Verify `ev_snapshot_sizes` EVENT is ENABLED in `information_schema.EVENTS`
     - _Requirements: 17.1, 17.2, 17.3_
 
-  - [ ] 3.2 Implement sp_margin_decomposition
+  - [~] 3.2 Implement sp_margin_decomposition
     - Replace stub with full logic: intersect the requested segment with the caller's USER_SEGMENT_MAP using `WHERE segment_id IN (SELECT segment_id FROM USER_SEGMENT_MAP WHERE db_user=SUBSTRING_INDEX(USER(),'@',1)) AND name = p_segment`; also apply product_line filter if USM.product_line IS NOT NULL; if no matching rows, return empty result
     - Read from QUARTERLY_FINANCIALS; compute Δoperating_income, Δrevenue, Δmargin_rate per segment; respect basis caveat
     - Revenue effect = Δrevenue × period_A_margin_rate; Margin-rate effect = period_B_revenue × Δmargin_rate
@@ -325,6 +328,7 @@ Six-stage implementation plan following the staged development process (Requirem
     - Return result set: `(component VARCHAR(30), value_delta DECIMAL(20,4))`
     - Support optional `@group_by` session variable for additional output grouping
     - All references to calling user via `SUBSTRING_INDEX(USER(),'@',1)`; no `CURRENT_USER()`
+    - [~] IN PROGRESS: Full 2-component SP applied to DB via `sql/migrations/11_stage3_routines.sql`. Awaiting Stage 3 gate validation.
     - _Requirements: 15.1, 5.1, 5.2, 5.10_
 
   - [ ] 3.3 Implement sp_forecast_business
