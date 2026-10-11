@@ -326,17 +326,19 @@ Six-stage implementation plan following the staged development process (Requirem
 
 - [ ] 3. Stage 3 — Stored Routines and DB-Intelligence
 
-  - [ ] 3.1 Implement sp_snapshot_sizes and 90-day backfill
+  - [ ] 3.1 Implement sp_snapshot_sizes and load-progress snapshots
     - Full `sp_snapshot_sizes`: `SET SESSION information_schema_stats_expiry=0`; INSERT INTO `DB_SIZE_SNAPSHOT` from `information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE()`; use `ON DUPLICATE KEY UPDATE` on `snapped_at` (UNIQUE KEY prevents duplicates)
-    - Write `etl/backfill_snapshots.py`: read current total (data+index) MB from `information_schema` as `real_size_mb` (newest anchor); insert 90 synthetic rows (`is_synthetic=TRUE`) with `snapped_at` from (today−90) to (today−1); newest row = `real_size_mb`; earlier rows = `real_size_mb − slope × days_ago` (floor 1 MB); label all rows as simulated in documentation; `INSERT IGNORE` for idempotency
+    - Write `etl/load-progress snapshots: INSERT after each AZURE_VM batch load (already done in task 2.9b); `INSERT IGNORE` for idempotency
     - Verify `ev_snapshot_sizes` EVENT is ENABLED in `information_schema.EVENTS`
     - _Requirements: 17.1, 17.2, 17.3_
 
   - [ ] 3.2 Implement sp_margin_decomposition
     - Replace stub with full logic: intersect the requested segment with the caller's USER_SEGMENT_MAP using `WHERE segment_id IN (SELECT segment_id FROM USER_SEGMENT_MAP WHERE db_user=SUBSTRING_INDEX(USER(),'@',1)) AND segment_name = p_segment`; also apply product_line filter if USM.product_line IS NOT NULL; if no matching rows, return empty result
-    - Read from FACT_SALES via DEFINER access; GROUP BY segment for periods A and B
-    - Compute volume, price, discount, and mix effects
-    - Return result set: `(effect_name VARCHAR(20), value_delta DECIMAL(20,4))`
+    - Read from QUARTERLY_FINANCIALS; compute Δoperating_income, Δrevenue, Δmargin_rate per segment; respect basis caveat
+    - Read from QUARTERLY_FINANCIALS; compute Δoperating_income, Δrevenue, Δmargin_rate per segment; respect basis caveat
+    - Revenue effect = Δrevenue × period_A_margin_rate; Margin-rate effect = period_B_revenue × Δmargin_rate
+    - Compute segment-level decomposition on QUARTERLY_FINANCIALS: operating income change = revenue effect + margin-rate effect
+    - Return result set: `(component VARCHAR(30), value_delta DECIMAL(20,4))`
     - Support optional `@group_by` session variable for additional output grouping
     - All references to calling user via `SUBSTRING_INDEX(USER(),'@',1)`; no `CURRENT_USER()`
     - _Requirements: 15.1, 5.1, 5.2, 5.10_
@@ -362,6 +364,7 @@ Six-stage implementation plan following the staged development process (Requirem
     - Write FORECAST_LINE: metric_name='lift_source', metric_value=NULL, error_indicator=lift_source (stores which path was taken)
     - When lift_source='derived_from_prior_launches': write additional FORECAST_LINE with metric_name='n_prior_launches', metric_value=n_prior_launches
     - Add CONFIG key: STEAM_TO_REVENUE_SCALE (documents the proxy scale factor; default '1.0'; read but not yet used in formula — document as illustrative proxy in FORECAST_LINE)
+    - UI displays as SCENARIO with: assumption source (measured/derived/expected), lift value, lift_source label, Steam game if applicable
     - `projected_revenue_impact = baseline_monthly_revenue × event_duration_months × event_lift`
     - Confidence tier: high (all 3 inputs, lift_source='measured'), medium (2 inputs OR lift_source='derived_from_prior_launches'), low (0–1 inputs or zero_fallback)
     - `as_of_date` from `@as_of_date` session variable (NULL → CURDATE())
