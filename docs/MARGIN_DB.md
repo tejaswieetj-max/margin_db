@@ -391,3 +391,51 @@ All five CONFIG keys (EVENT_PRE_MONTHS, EVENT_POST_MONTHS, BASELINE_MONTHS, MIN_
 - Keep ODBC (pyodbc) in `backend/`; `mysql-connector-python` only in `etl/`.
 - No Oracle PL/SQL syntax in any `.sql` file (`DBMS_*`, `%TYPE`, `DECLARE … EXCEPTION`, `:=` outside MySQL `SET`).
 - Do not add scope beyond this document (no byte-level JSON round-trip requirements, no responsive-width mandates, no extra reports) unless asked.
+
+---
+
+## 21. Synthetic cost approximation — unit_cost_ratio (gen_synthetic_sales.py)
+
+**⚠ synthetic approximation — not reported data**
+
+The `unit_cost_ratio` column on the `PRODUCT` table is used exclusively by
+`gen_synthetic_sales.py` to generate `FACT_SALES.cost_amount` for
+PBP/IC/MPC non-Gaming products. These ratios are **not derived from, and are
+not representative of, Microsoft's actual reported cost structure**. They exist
+solely to populate the `cost_amount` column for demo and load-testing purposes.
+
+Microsoft does not publicly report segment-level COGS or product-level cost
+ratios. Any `cost_amount` value in a synthetic `FACT_SALES` row is a simulation
+and must never be cited as Microsoft cost or margin data.
+
+### Values used (synthetic approximation — not reported data)
+
+| Segment / Product line          | Approximate unit_cost_ratio | Notes                               |
+|---------------------------------|-----------------------------|-------------------------------------|
+| Productivity and Business Processes (PBP) | 0.20–0.35 | Software/SaaS gross margin ~65–80%; ratio represents COGS fraction |
+| Intelligent Cloud (IC)          | 0.28–0.42 | Cloud infrastructure has higher COGS component |
+| More Personal Computing (MPC) non-Gaming | 0.35–0.55 | Devices (Surface, PC accessories) have higher hardware costs |
+| Gaming (MPC, product_line='Gaming') | **NULL** | **No Gaming cost data is disclosed; cost_amount=NULL for all Gaming synthetic rows. Do not fabricate.** |
+
+These ratios are seeded in `sql/06_seed_reference.sql` per product.
+The actual values stored in the database may vary within the ranges above
+depending on the seed SQL. Check the PRODUCT table directly for exact values.
+
+### Formula
+
+For non-Gaming products only:
+
+```
+cost_amount = unit_price × unit_cost_ratio
+```
+
+`unit_price` is the synthetic price drawn from the RNG during row generation
+(lognormal distribution, clipped and scaled to reconcile quarterly totals to
+`QUARTERLY_FINANCIALS.revenue`). Both `unit_price` and `cost_amount` are
+synthetic and not representative of actual Microsoft prices or costs.
+
+### References
+
+- Task 2.10 (`gen_synthetic_sales.py`): requirements 4.6, 21.1
+- Section 12.2 (Synthetic data rules)
+- Section 12.4 Q2 (Margin / cost decision)

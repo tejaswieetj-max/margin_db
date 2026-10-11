@@ -64,7 +64,7 @@ Six-stage implementation plan following the staged development process (Requirem
     - **git commit**: `git add -A && git commit -m "Stage 0: environment"`
     - _Requirements: 22.1, 22.2_
 
-- [~] 1. Stage 1 — Schema
+- [ ] 1. Stage 1 — Schema
 
   - [x] 1.1 Write 01_ddl.sql — all 24 tables plus CONFIG
     - All 24 tables in dependency order using `CREATE TABLE IF NOT EXISTS` only — no DROP TABLE statements in this file
@@ -269,7 +269,7 @@ Six-stage implementation plan following the staged development process (Requirem
     - `INSERT IGNORE` for idempotency; log count of rows inserted per event
     - _Requirements: 4.2_
 
-  - [-] 2.10 Write gen_synthetic_sales.py
+  - [x] 2.10 Write gen_synthetic_sales.py
     - Read dimension tables and `QUARTERLY_FINANCIALS` from DB
     - Generate 2M–5M `FACT_SALES` rows at Daily_Aggregate grain for FY23Q1–FY26Q4 only (2022-07-01 to 2026-06-30); `is_synthetic=TRUE` (column default)
     - Reconciliation — three independent groups: Gaming, MPC (excl. Gaming), Productivity+Cloud; `SUM(gross_amount)` per `(fiscal_year, fiscal_quarter, segment_id)` must match `QUARTERLY_FINANCIALS.revenue` within 0.1%; each group reconciled independently; print reconciliation report; ABORT if any combination exceeds 0.1%
@@ -287,7 +287,7 @@ Six-stage implementation plan following the staged development process (Requirem
       - `INSERT INTO CONFIG (config_key, config_value) VALUES ('DB_ALLOCATED_MB', computed_value) ON DUPLICATE KEY UPDATE config_value = VALUES(config_value)`
     - _Requirements: 4.6, 21.1_
 
-  - [~] 2.11 Write load_sales.sh — ETL master orchestrator
+  - [x] 2.11 Write load_sales.sh — ETL master orchestrator
     - ETL sequence: `fetch_edgar.py` → `load_financials.py` → [HUMAN: confirm segments.csv] → `load_steam.py` → `load_trends.py` → [HUMAN: confirm events.csv] → `load_events.py` → `compute_event_windows.py` → `gen_synthetic_sales.py` → LOAD DATA LOCAL INFILE loop → reconciliation check
     - `set -euo pipefail`; log UTC + source filename on any step failure; halt on failure
     - LOAD DATA LOCAL INFILE processes `data/clean/sales_chunk_*.csv` one chunk at a time
@@ -295,7 +295,7 @@ Six-stage implementation plan following the staged development process (Requirem
     - 30-minute timeout wrapper (use `timeout 1800` or equivalent)
     - _Requirements: 4.8, 4.10, 4.11_
 
-  - [~] 2.12 Stage 2 gate — seq-scan verification
+  - [ ] 2.12 Stage 2 gate — seq-scan verification
     - **HUMAN STEP**: Confirm ETL is complete and `FACT_SALES` has >= 2M rows; confirm no secondary index on `(product_id, sale_date)` exists
     - Execute Heavy_Demo_Query via MySQL CLI as `analyst_all` (no backend required at this stage):
       `mysql -u analyst_all -p$DEMO_ANALYST_ALL_PASSWORD $DB_NAME < tests/heavy_demo_query.sql`
@@ -313,13 +313,13 @@ Six-stage implementation plan following the staged development process (Requirem
 
 - [ ] 3. Stage 3 — Stored Routines and DB-Intelligence
 
-  - [~] 3.1 Implement sp_snapshot_sizes and 90-day backfill
+  - [ ] 3.1 Implement sp_snapshot_sizes and 90-day backfill
     - Full `sp_snapshot_sizes`: `SET SESSION information_schema_stats_expiry=0`; INSERT INTO `DB_SIZE_SNAPSHOT` from `information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE()`; use `ON DUPLICATE KEY UPDATE` on `snapped_at` (UNIQUE KEY prevents duplicates)
     - Write `etl/backfill_snapshots.py`: read current total (data+index) MB from `information_schema` as `real_size_mb` (newest anchor); insert 90 synthetic rows (`is_synthetic=TRUE`) with `snapped_at` from (today−90) to (today−1); newest row = `real_size_mb`; earlier rows = `real_size_mb − slope × days_ago` (floor 1 MB); label all rows as simulated in documentation; `INSERT IGNORE` for idempotency
     - Verify `ev_snapshot_sizes` EVENT is ENABLED in `information_schema.EVENTS`
     - _Requirements: 17.1, 17.2, 17.3_
 
-  - [~] 3.2 Implement sp_margin_decomposition
+  - [ ] 3.2 Implement sp_margin_decomposition
     - Replace stub with full logic: intersect the requested segment with the caller's USER_SEGMENT_MAP using `WHERE segment_id IN (SELECT segment_id FROM USER_SEGMENT_MAP WHERE db_user=SUBSTRING_INDEX(USER(),'@',1)) AND segment_name = p_segment`; also apply product_line filter if USM.product_line IS NOT NULL; if no matching rows, return empty result
     - Read from FACT_SALES via DEFINER access; GROUP BY segment for periods A and B
     - Compute volume, price, discount, and mix effects
@@ -328,7 +328,7 @@ Six-stage implementation plan following the staged development process (Requirem
     - All references to calling user via `SUBSTRING_INDEX(USER(),'@',1)`; no `CURRENT_USER()`
     - _Requirements: 15.1, 5.1, 5.2, 5.10_
 
-  - [~] 3.3 Implement sp_forecast_business
+  - [ ] 3.3 Implement sp_forecast_business
     - Read CONFIG keys at start: EVENT_PRE_MONTHS, EVENT_POST_MONTHS, BASELINE_MONTHS, MIN_BASELINE_MONTHS, FORECAST_LIFT_MONTHS (all default 3); never hardcode these values
     - Baseline: trailing 4-quarter average monthly revenue from QUARTERLY_FINANCIALS (post-2023-10 quarters only, to use post-Activision-acquisition data); verify caller has segment access via USER_SEGMENT_MAP; return empty result set if not permitted
     - Lift source selection (in order of preference):
@@ -357,14 +357,14 @@ Six-stage implementation plan following the staged development process (Requirem
     - No Gaming cost, operating income or margin anywhere in this procedure
     - _Requirements: 8.1, 8.2, 8.3, 8.4, 8.5, 8.7, 5.10_
 
-  - [~] 3.4 Implement sp_update_pricing_rule
+  - [ ] 3.4 Implement sp_update_pricing_rule
     - Replace stub: `UPDATE PRICING_RULE SET price_value=p_new_value, version=version+1 WHERE rule_id=p_rule_id AND version=p_expected_version`
     - `ROW_COUNT()=1` → `p_status='OK'`; version already incremented
     - `ROW_COUNT()=0` → INSERT CONFLICT_LOG, `p_status='CONFLICT'`; no SIGNAL on mismatch
     - `SUBSTRING_INDEX(USER(),'@',1)` for `attempted_by` in CONFLICT_LOG
     - _Requirements: 12.1, 12.2_
 
-  - [~] 3.5 Implement sp_place_order
+  - [ ] 3.5 Implement sp_place_order
     - Replace stub: EXIT HANDLER + RESIGNAL pattern; on any SQLEXCEPTION: ROLLBACK + RESIGNAL
     - `JSON_TABLE` to iterate `p_items` JSON array
     - Fixed savepoint names: `sp_orders`, `sp_item`, `sp_fact`
@@ -372,7 +372,7 @@ Six-stage implementation plan following the staged development process (Requirem
     - No partial rows after rollback
     - _Requirements: 13.1_
 
-  - [~] 3.6 Implement sp_recommend_index and sp_record_index_test
+  - [ ] 3.6 Implement sp_recommend_index and sp_record_index_test
     - `sp_recommend_index(IN p_qe_id BIGINT, IN p_table VARCHAR(64), IN p_columns_csv VARCHAR(500), OUT p_rec_id INT)`:
       1. Deduplicate: check existing active rec for same `(table_name, columns_csv)` with status in ('proposed','testing','applied'); if found, RETURN (no-op)
       2. Whitelist check: `p_table` must be in allowed list (FACT_SALES); `SIGNAL SQLSTATE '45001'` if not
@@ -386,21 +386,21 @@ Six-stage implementation plan following the staged development process (Requirem
     - Also implement `sp_flag_query(IN p_qe_id BIGINT)`: `UPDATE QUERY_EXECUTION SET flagged=1 WHERE qe_id=p_qe_id;` (SQL SECURITY DEFINER)
     - _Requirements: 7.5, 7.6, 7.9_
 
-  - [~] 3.7 Implement sp_apply_index and sp_reject_index
+  - [ ] 3.7 Implement sp_apply_index and sp_reject_index
     - `sp_apply_index(p_rec_id)`:
       - Before calling ALTER INDEX VISIBLE: verify `after_ms IS NOT NULL`; if NULL, return error result set `SELECT 'Index test not yet complete' AS result`; the engineer router maps this to HTTP 409
       - Verify `status='testing'`; dynamic `ALTER TABLE ... ALTER INDEX ... VISIBLE`; UPDATE status='applied', decided_by, decided_at=NOW(3); return `SELECT 'applied' AS result`
     - `sp_reject_index(p_rec_id)`: verify `status IN ('testing','proposed')`; dynamic `ALTER TABLE ... DROP INDEX`; if ALTER fails (index not existing), return error result set without re-raising; UPDATE status='rejected'; return `SELECT 'rejected' AS result`
     - _Requirements: 7.7, 7.8, 7.10_
 
-  - [~] 3.8 Implement sp_add_partition
+  - [ ] 3.8 Implement sp_add_partition
     - Dynamic SQL: `REORGANIZE PARTITION p_catch INTO (new named partition + new p_catch MAXVALUE)`
     - Whitelist `p_table_name` (only FACT_SALES allowed); SIGNAL if not
     - Generate partition name from boundary date in `p_FYyyQq` format
     - PREPARE/EXECUTE/DEALLOCATE PREPARE pattern
     - _Requirements: 14.2_
 
-  - [~] 3.9 Implement sp_forecast_database
+  - [ ] 3.9 Implement sp_forecast_database
     - Replace stub with linear regression on DB_SIZE_SNAPSHOT (last 90 days)
     - Read `DB_ALLOCATED_MB` from `CONFIG WHERE config_key='DB_ALLOCATED_MB'`; fall back to `@db_allocated_mb` session variable if CONFIG row absent
     - Read `AT_RISK_FACTOR` from `CONFIG WHERE config_key='AT_RISK_FACTOR'`; default 1.25 if absent
@@ -412,20 +412,20 @@ Six-stage implementation plan following the staged development process (Requirem
     - `as_of_date` from session variable
     - _Requirements: 9.1, 9.2, 9.3, 9.4, 9.5, 9.6, 9.7, 9.8, 9.9, 17.4, 17.5_
 
-  - [~] 3.10 Implement sp_insert_qe and sp_insert_qpn
+  - [ ] 3.10 Implement sp_insert_qe and sp_insert_qpn
     - `sp_insert_qe`: `INSERT INTO QUERY_EXECUTION(...) VALUES(...); SET p_qe_id = LAST_INSERT_ID();` SQL SECURITY DEFINER
     - `sp_insert_qpn`: `INSERT INTO QUERY_PLAN_NODE(...) VALUES(...);` SQL SECURITY DEFINER
     - Both already granted to `role_telemetry` via `07_grants.sql` (task 1.7)
     - _Requirements: 7.3_
 
-  - [~] 3.11 Write property-based test for optimistic lock (Property 1)
+  - [ ] 3.11 Write property-based test for optimistic lock (Property 1)
     - Use `hypothesis`; generate concurrent updates with same `expected_version`
     - Assert exactly one update returns HTTP 200 (status='OK'), all others return HTTP 409 (status='CONFLICT')
     - Assert `version = initial_version + 1` after N attempts; assert `CONFLICT_LOG` has exactly N−1 rows
     - **Property 1: Optimistic Lock Exclusivity**
     - **Validates: Requirements 12.1, 12.2, 12.3**
 
-  - [~] 3.12 Write property-based test for pct_time invariant (Property 2)
+  - [ ] 3.12 Write property-based test for pct_time invariant (Property 2)
     - Use `hypothesis`; generate arbitrary `actual_time` (M, per-loop end time) and `loops` values for a set of plan nodes
     - Assert `pct_time = (actual_ms × loops) / root_total_ms × 100` where `root_total_ms = root_actual_ms × root_loops`, within 0.01 tolerance
     - Assert root node `pct_time = 100.0`
@@ -433,13 +433,13 @@ Six-stage implementation plan following the staged development process (Requirem
     - **Property 2: pct_time Sum Invariant**
     - **Validates: Requirements 7.1**
 
-  - [~] 3.13 Write property-based test for SQL console multi-statement rejection (Property 6)
+  - [ ] 3.13 Write property-based test for SQL console multi-statement rejection (Property 6)
     - Grammar-based strategy: generate valid `SELECT ...` and `WITH ... SELECT ...` strings (expect accept=True); generate multi-statement strings (semicolon + non-whitespace) and DML strings (expect accept=False)
     - Assert validation function returns True for all valid inputs, False for all invalid inputs
     - **Property 6: SQL Console Multi-Statement Rejection**
     - **Validates: Requirements 16.1**
 
-  - [~] 3.14 Stage 3 gate
+  - [ ] 3.14 Stage 3 gate
     - Re-run `tests/run_role_tests.sh`; verify no regressions
     - Call `sp_snapshot_sizes()` via MySQL CLI; verify row appears in `DB_SIZE_SNAPSHOT`
     - Verify `information_schema_stats_expiry=0` SESSION effect: run INSERT, re-query `information_schema.TABLES`, verify `data_length` updates; record in `docs/stage_3_report.md`
@@ -453,7 +453,7 @@ Six-stage implementation plan following the staged development process (Requirem
 
 - [ ] 4. Stage 4 — Backend API
 
-  - [~] 4.1 Implement main.py
+  - [ ] 4.1 Implement main.py
     - App factory; startup env-var check (all required variables from `.env.example`); raise RuntimeError if any missing
     - CORS: `allow_origins=["http://localhost:5173"]`
     - Register analyst and engineer routers
@@ -461,7 +461,7 @@ Six-stage implementation plan following the staged development process (Requirem
     - Startup check: verify not running as root (`os.getuid() != 0` on Unix)
     - _Requirements: 6.1, 6.4, 6.7, 6.8, 6.9_
 
-  - [~] 4.2 Implement auth.py — JWT authentication with pyjwt
+  - [ ] 4.2 Implement auth.py — JWT authentication with pyjwt
     - `POST /login`: open pyodbc connection as submitted user; `SELECT CURRENT_ROLE()`; if result is None, empty string, or the literal `'NONE'`: fall back to `SHOW GRANTS` to extract role
     - Handle backtick-wrapped role names: strip backticks from role name before comparing to `'business_analyst'`, `'db_engineer'`, etc. (e.g., `` `business_analyst` `` → `business_analyst`)
     - `import jwt` (pyjwt); `jwt.encode({"sub": username, "role": role, "exp": now+3600}, JWT_SECRET, algorithm="HS256")`
@@ -470,14 +470,14 @@ Six-stage implementation plan following the staged development process (Requirem
     - Return HTTP 401 on connect failure; HTTP 401 on expired/missing JWT; HTTP 403 on role mismatch
     - _Requirements: 1.1, 1.2, 1.3, 1.6, 1.7, 1.9_
 
-  - [~] 4.3 Implement db.py — ODBC helpers
+  - [ ] 4.3 Implement db.py — ODBC helpers
     - `get_connection(username, password, role)`: `DRIVER={MySQL ODBC 8.0 Unicode Driver}; charset=utf8mb4`; `timeout=10`; set `MAX_EXECUTION_TIME=30000` immediately after opening if role is `business_analyst`
     - `call_sp(conn, sp_name, params)`: `{CALL sp(?,?,?)}`; check `cursor.description is not None` before `fetchall()`; after `fetchall()`, drain any trailing result sets with `while cursor.nextset(): pass`; call `conn.commit()` after every SP call
     - `call_sp_out(conn, sp_name, in_params, out_count)`: CALL statement format `{CALL sp_name(?, ?, @out0)}` — bind in-params with `?`, reference out-params as `@out0` etc.; after the CALL, drain intermediate result sets with `while cursor.nextset(): pass` loop; then `SELECT @out0, ...`; call `conn.commit()`
     - On connection failure: raise domain exception; router converts to HTTP 503
     - _Requirements: 6.1, 1.4_
 
-  - [~] 4.4 Implement telemetry.py — EXPLAIN ANALYZE, plan parser, background task
+  - [ ] 4.4 Implement telemetry.py — EXPLAIN ANALYZE, plan parser, background task
     - `parse_explain_tree(explain_text)`:
       - Indent stack for parent assignment: `depth = leading_spaces / 2`; pop stack until top depth < current depth; new node's parent = stack top; push current node
       - Parse `actual time=N..M loops=L`: `actual_ms = M` (per-loop end time); `total_ms = M × loops`
@@ -502,7 +502,7 @@ Six-stage implementation plan following the staged development process (Requirem
     - `/sql` endpoint: validate SQL; run `write_telemetry`; if flagged enqueue `BackgroundTasks.add_task(run_index_recommendation, ...)`; return immediately with `{qe_id, flagged, rows, duration_ms}`
     - _Requirements: 7.1, 7.2, 7.3, 7.4, 7.6, 7.7, 16.2_
 
-  - [~] 4.5 Implement analyst router
+  - [ ] 4.5 Implement analyst router
     - All endpoints require `business_analyst` role; return HTTP 403 if mismatch
     - `GET /events`: `SELECT * FROM v_events`; return event list
     - `GET /margin?segment&period_a&period_b&group_by`: SET `@group_by = ?` before calling SP if group_by provided; segment must be one of PBP/IC/MPC; `call_sp(conn, "sp_margin_decomposition", [segment, period_a, period_b])`
@@ -513,7 +513,7 @@ Six-stage implementation plan following the staged development process (Requirem
     - `POST /analyst/orders`: `call_sp(conn, "sp_place_order", [...])`; test/demo only
     - _Requirements: 6.2, 6.5, 6.6, 1.4, 1.8, 12.3, 13.2, 15.2, 16.1_
 
-  - [~] 4.6 Implement engineer router
+  - [ ] 4.6 Implement engineer router
     - All endpoints require `db_engineer` role; return HTTP 403 if mismatch
     - `GET /workload`: query `performance_schema.events_statements_summary_by_digest` top 20 by count_star
     - `GET /slow-queries`: `QUERY_EXECUTION WHERE flagged=1 ORDER BY started_at DESC`
@@ -529,13 +529,13 @@ Six-stage implementation plan following the staged development process (Requirem
     - `GET /engineer/events`: `SELECT * FROM v_events_min`
     - _Requirements: 6.3, 7.10, 9.1, 9.7, 14.3, 14.4, 17.5, 17.6_
 
-  - [~] 4.7 Implement Pydantic request and response models
+  - [ ] 4.7 Implement Pydantic request and response models
     - `models/requests.py`: `LoginRequest`, `SqlRequest (sql: str)`, `PricingUpdateRequest (new_value, expected_version)`, `OrderRequest (order_date, device_id, region_id, channel_id, items: list)`, `PartitionRequest (table_name, boundary)`
     - `models/responses.py`: `ForecastBusinessResponse`, `ForecastDatabaseResponse`, `MarginDecompositionResponse`, `SlowQueryResponse`, `IndexRecResponse`, `ConflictLogResponse`, `CapacityForecastResponse`, `SqlResponse (qe_id, flagged, rows, duration_ms)`
     - No internal connection details exposed in any response model
     - _Requirements: 6.5_
 
-  - [~] 4.8 Write test_concurrency.py
+  - [ ] 4.8 Write test_concurrency.py
     - Read current `version` from `PRICING_RULE WHERE rule_id=1` via admin connection before spawning threads
     - Spawn two threads that simultaneously submit `PUT /pricing/1` with that version as `expected_version`
     - Assert `sorted(results) == [200, 409]`
@@ -543,21 +543,21 @@ Six-stage implementation plan following the staged development process (Requirem
     - Clean up `CONFLICT_LOG` rows at teardown (via admin connection)
     - _Requirements: 18.2_
 
-  - [~] 4.9 Write property-based test for full-scan flag rule completeness (Property 3)
+  - [ ] 4.9 Write property-based test for full-scan flag rule completeness (Property 3)
     - Use `hypothesis`; generate arbitrary sets of QUERY_PLAN_NODE-like dicts with random `operation` and `pct_time` values
     - Assert `flagged=True` if and only if at least one node has `operation.startswith("Table scan on") AND pct_time > 50`
     - Verify no false positives and no false negatives
     - **Property 3: Full-Scan Flag Rule Completeness**
     - **Validates: Requirements 7.4, 11.2**
 
-  - [~] 4.10 Write property-based test for projected query duration formula (Property 5)
+  - [ ] 4.10 Write property-based test for projected query duration formula (Property 5)
     - Use `hypothesis`; generate arbitrary positive `baseline_ms`, `current_rows`, `projected_rows`
     - Assert `projected_duration_ms == baseline_ms × (projected_rows / current_rows)` within floating-point tolerance
     - Assert `at_risk = True` iff `projected_duration_ms >= AT_RISK_FACTOR × baseline_ms` where AT_RISK_FACTOR defaults to 1.25
     - **Property 5: Projected Duration Formula Correctness**
     - **Validates: Requirements 9.3, 9.4**
 
-  - [~] 4.11 Write test_demo_loop.py
+  - [ ] 4.11 Write test_demo_loop.py
     - Drop any prior test index at start via admin connection for idempotency (`ALTER TABLE FACT_SALES DROP INDEX IF EXISTS idx_rec_...`)
     - Step 1: `POST /sql` with Heavy_Demo_Query from `tests/heavy_demo_query.sql`; assert `qe_id` in response; record pre-index `duration_ms` from API response (not wall-clock)
     - Step 2: Poll `GET /index-recs` up to 60 seconds (2-second intervals) until a recommendation for that `qe_id` appears; assert `rec_id` found
@@ -569,7 +569,7 @@ Six-stage implementation plan following the staged development process (Requirem
     - Assert total elapsed time <= 120 seconds (all steps including polling must complete within 120 seconds total)
     - _Requirements: 11.6, 18.3_
 
-  - [~] 4.12 Stage 4 gate
+  - [ ] 4.12 Stage 4 gate
     - Run `pytest tests/test_concurrency.py tests/test_demo_loop.py tests/test_odbc.py`; all must pass
     - Verify `GET /docs` returns HTTP 200
     - Verify `GET /slow-queries` with analyst JWT returns HTTP 403
@@ -580,77 +580,77 @@ Six-stage implementation plan following the staged development process (Requirem
 
 - [ ] 5. Stage 5 — Frontend
 
-  - [~] 5.1 Implement API client and auth hooks
+  - [ ] 5.1 Implement API client and auth hooks
     - `client.js`: axios instance with `VITE_API_BASE_URL`; JWT stored in module-level `_token` (not localStorage); `setToken`/`clearToken` exports; request interceptor adds `Authorization: Bearer {_token}`; response interceptor on HTTP 401 → `clearToken()` + `window.location.replace('/login')` — Exception: the 401 interceptor must NOT redirect when the request is to `/login`; detect by checking `error.config?.url?.includes('/login')` in the interceptor; 401 from `/login` is handled inline by the Login page
     - `useAuth.js`: `login(username, password)` calls `POST /login`; `logout()` calls `clearToken()`; exposes `role` and `isAuthenticated`
     - `useApi.js`: wraps axios calls; on error sets error state and clears page data; network timeout 10 seconds
     - _Requirements: 19.2, 19.4, 19.6, 19.7_
 
-  - [~] 5.2 Implement ProtectedRoute, RoleRoute, and router setup
+  - [ ] 5.2 Implement ProtectedRoute, RoleRoute, and router setup
     - `ProtectedRoute`: synchronous check on mount; `navigate('/login', {replace:true})` before any protected content renders; transition < 1 second
     - `RoleRoute`: checks JWT `role` claim; redirects to `/login` if role does not match
     - `main.jsx`: routes: `/login` (public), `/analyst/*` (ProtectedRoute + `business_analyst` check), `/engineer/*` (ProtectedRoute + `db_engineer` check), `/` → role-based redirect
     - _Requirements: 19.4_
 
-  - [~] 5.3 Implement Login page
+  - [ ] 5.3 Implement Login page
     - Form with username/password fields; `POST /login` on submit
     - On success: `setToken(token)` + redirect to role-appropriate dashboard
     - On HTTP 401: display inline error message within 3 seconds; do NOT trigger the global 401 redirect handler; no server error details exposed
     - _Requirements: 19.1, 19.6, 19.7_
 
-  - [~] 5.4 HUMAN STEP — Stitch export
+  - [ ] 5.4 HUMAN STEP — Stitch export
     - **HUMAN STEP**: Before wiring pages, the user must place the Stitch design export in `frontend/src/stitch_export/`; if the export is not usable React, describe what conversion is needed and propose minimal conversion steps; do not redesign screens; agent must stop and wait for confirmation
     - _Requirements: 19.5_
 
-  - [~] 5.5 Implement analyst EventCalendar page
+  - [ ] 5.5 Implement analyst EventCalendar page
     - Fetch `GET /events`; display events with name, date range, type
     - On event selection: `GET /forecast/business/{event_id}`; display projected revenue impact, date range, confidence tier
     - API error → error message within 3 seconds; clear stale data
     - _Requirements: 10.1, 10.2, 10.3, 10.5, 10.6_
 
-  - [~] 5.6 Implement analyst MarginDecomposition page
+  - [ ] 5.6 Implement analyst MarginDecomposition page
     - Inputs: segment dropdown (options: Productivity and Business Processes, Intelligent Cloud, More Personal Computing), period_a (text), period_b (text), optional group_by; calls `GET /margin` with group_by passed as query param
     - Render Recharts bar chart with four decomposition components (volume, price, discount, mix)
     - _Requirements: 15.3_
 
-  - [~] 5.7 Implement analyst BusinessForecast page
+  - [ ] 5.7 Implement analyst BusinessForecast page
     - `GET /forecast/business/{event_id}`; display event name, date range, projected revenue impact, confidence tier
     - Optional `as_of_date` date picker that appends `?as_of_date=YYYY-MM-DD` to request
     - _Requirements: 8.1_
 
-  - [~] 5.8 Implement analyst SqlConsole and MyQueries pages
+  - [ ] 5.8 Implement analyst SqlConsole and MyQueries pages
     - `SqlConsole`: textarea for SQL input; `POST /sql` on submit with 60-second timeout (`{timeout: 60000}` on the axios config); display result rows in table; show "flagged" badge if `flagged=true`; on HTTP 422 display validation error; on timeout display 'Query timed out' error message; response is immediate (background index task is in progress)
     - `MyQueries`: `GET /my-queries`; table with columns: qe_id, started_at, duration_ms, flagged (badge), index status, before_ms / after_ms (display "N/A" if null)
     - _Requirements: 16.1, 16.2, 19.8_
 
-  - [~] 5.9 Implement engineer WorkloadMonitor and SlowQueryQueue pages
+  - [ ] 5.9 Implement engineer WorkloadMonitor and SlowQueryQueue pages
     - `WorkloadMonitor`: `GET /workload`; display top 20 queries table (digest_text, count_star, avg_latency)
     - `SlowQueryQueue`: `GET /slow-queries`; on row selection `GET /slow-queries/{qe_id}/plan`; render plan nodes in tree; highlight "Table scan on" nodes with `pct_time > 50` in a distinct color
     - _Requirements: 7.10_
 
-  - [~] 5.10 Implement engineer IndexApproval page
+  - [ ] 5.10 Implement engineer IndexApproval page
     - `GET /index-recs`; display table: table_name, columns_csv, before_ms, after_ms, status
     - Approve button → `POST /index-recs/{id}/approve`; if HTTP 409 display 'Index test not yet complete'; Reject button → `POST /index-recs/{id}/reject`
     - On success: update status in UI without full page reload; API error → error message within 3 seconds, preserve existing table state
     - _Requirements: 7.7, 7.9, 7.8_
 
-  - [~] 5.11 Implement engineer PartitionManager and CapacityForecast pages
+  - [ ] 5.11 Implement engineer PartitionManager and CapacityForecast pages
     - `PartitionManager`: `GET /partitions`; display partition name, ordinal, row count, size in MB; form with table_name and boundary date inputs; submit calls `POST /partitions`
     - `CapacityForecast`: `GET /capacity/forecast`; display days_to_90pct, current utilization %; at-risk query list (using AT_RISK_FACTOR from backend); storage warning banner if projected utilization > 80% of DB_ALLOCATED_MB; optional as_of_date input
     - _Requirements: 9.2, 10.4, 14.3, 14.4_
 
-  - [~] 5.12 Implement engineer EngineerEventCalendar and ConflictLog pages
+  - [ ] 5.12 Implement engineer EngineerEventCalendar and ConflictLog pages
     - `EngineerEventCalendar`: `GET /engineer/events` (v_events_min — name, dates, expected_lift only, NO revenue columns); on event selection navigate to CapacityForecast for that event_id
     - `ConflictLog`: `GET /conflicts`; display table: conflict_id, rule_id, attempted_by, stale_version, current_version, at
     - _Requirements: 10.1, 10.4, 17.6_
 
-  - [~] 5.13 Wire Stitch-export components to live API (required)
+  - [ ] 5.13 Wire Stitch-export components to live API (required)
     - Import components from `stitch_export/`; do not modify layout or styles of exported components
     - Replace any mock data arrays or static constants with `useApi` hook calls to appropriate endpoints
     - Wire Recharts in MarginDecomposition to `GET /margin` response
     - _Requirements: 19.5_
 
-  - [~] 5.14 Stage 5 gate
+  - [ ] 5.14 Stage 5 gate
     - `npm run build`; assert exit 0 with no errors
     - **HUMAN STEP**: Start backend (`uvicorn backend.app.main:app --reload`) and frontend (`npm run dev`) in separate terminals; verify in browser:
       1. Navigate to `/analyst/events` without logging in → redirects to `/login` within 1 second
