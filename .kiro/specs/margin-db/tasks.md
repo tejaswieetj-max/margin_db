@@ -464,7 +464,7 @@ Six-stage implementation plan following the staged development process (Requirem
 
 - [ ] 4. Stage 4 — Backend API
 
-  - [ ] 4.1 Implement main.py
+  - [~] 4.1 Implement main.py
     - App factory; startup env-var check (all required variables from `.env.example`); raise RuntimeError if any missing
     - CORS: `allow_origins=["http://localhost:5173"]`
     - Register analyst and engineer routers
@@ -472,7 +472,7 @@ Six-stage implementation plan following the staged development process (Requirem
     - Startup check: verify not running as root (`os.getuid() != 0` on Unix)
     - _Requirements: 6.1, 6.4, 6.7, 6.8, 6.9_
 
-  - [ ] 4.2 Implement auth.py — JWT authentication with pyjwt
+  - [~] 4.2 Implement auth.py — JWT authentication with pyjwt
     - `POST /login`: open pyodbc connection as submitted user; `SELECT CURRENT_ROLE()`; if result is None, empty string, or the literal `'NONE'`: fall back to `SHOW GRANTS` to extract role
     - Handle backtick-wrapped role names: strip backticks from role name before comparing to `'business_analyst'`, `'db_engineer'`, etc. (e.g., `` `business_analyst` `` → `business_analyst`)
     - `import jwt` (pyjwt); `jwt.encode({"sub": username, "role": role, "exp": now+3600}, JWT_SECRET, algorithm="HS256")`
@@ -481,7 +481,7 @@ Six-stage implementation plan following the staged development process (Requirem
     - Return HTTP 401 on connect failure; HTTP 401 on expired/missing JWT; HTTP 403 on role mismatch
     - _Requirements: 1.1, 1.2, 1.3, 1.6, 1.7, 1.9_
 
-  - [ ] 4.3 Implement db.py — ODBC helpers
+  - [~] 4.3 Implement db.py — ODBC helpers
     - `get_connection(username, password, role)`: `DRIVER={MySQL ODBC 8.0 Unicode Driver}; charset=utf8mb4`; `timeout=10`; set `MAX_EXECUTION_TIME=30000` immediately after opening if role is `business_analyst`
     - `call_sp(conn, sp_name, params)`: `{CALL sp(?,?,?)}`; check `cursor.description is not None` before `fetchall()`; after `fetchall()`, drain any trailing result sets with `while cursor.nextset(): pass`; call `conn.commit()` after every SP call
     - `call_sp_out(conn, sp_name, in_params, out_count)`: CALL statement format `{CALL sp_name(?, ?, @out0)}` — bind in-params with `?`, reference out-params as `@out0` etc.; after the CALL, drain intermediate result sets with `while cursor.nextset(): pass` loop; then `SELECT @out0, ...`; call `conn.commit()`
@@ -540,7 +540,7 @@ Six-stage implementation plan following the staged development process (Requirem
     - `GET /engineer/events`: `SELECT * FROM v_events_min`
     - _Requirements: 6.3, 7.10, 9.1, 9.7, 14.3, 14.4, 17.5, 17.6_
 
-  - [ ] 4.7 Implement Pydantic request and response models
+  - [~] 4.7 Implement Pydantic request and response models
     - `models/requests.py`: `LoginRequest`, `SqlRequest (sql: str)`, `PricingUpdateRequest (new_value, expected_version)`, `OrderRequest (order_date, device_id, region_id, channel_id, items: list)`, `PartitionRequest (table_name, boundary)`
     - `models/responses.py`: `ForecastBusinessResponse`, `ForecastDatabaseResponse`, `MarginDecompositionResponse`, `SlowQueryResponse`, `IndexRecResponse`, `ConflictLogResponse`, `CapacityForecastResponse`, `SqlResponse (qe_id, flagged, rows, duration_ms)`
     - No internal connection details exposed in any response model

@@ -15,6 +15,9 @@ Requirements covered: 18.4, 18.6
 import os
 import sys
 import pytest
+from dotenv import load_dotenv
+
+load_dotenv()
 
 try:
     import pyodbc
@@ -31,6 +34,7 @@ DB_PORT     = os.environ.get("DB_PORT", "3306")
 DB_NAME     = os.environ.get("DB_NAME", "margin_db")
 ADMIN_USER  = os.environ.get("ADMIN_USER", "admin_user")
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "")
+
 
 
 def _build_conn_str() -> str:
