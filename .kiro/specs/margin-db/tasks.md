@@ -92,16 +92,15 @@ Six-stage implementation plan following the staged development process (Requirem
 
   - [x] 1.3 Write 03_views.sql — all 8 views with SQL SECURITY DEFINER
     - All views: `DROP VIEW IF EXISTS` + `CREATE VIEW ... SQL SECURITY DEFINER AS ...`
-    - `v_sales`: JOIN FACT_SALES to PRODUCT, DIM_DATE, DIM_DEVICE, DIM_REGION, DIM_CHANNEL; segment filter via USER_SEGMENT_MAP; expose columns `platform`, `device_family`, `oem`, `region_name` (DIM_REGION.name), `channel_name` (DIM_CHANNEL.name); FACT_SALES must have **no alias** in this view to keep EXPLAIN ANALYZE output unambiguous
     - `v_financials`: QUARTERLY_FINANCIALS JOIN COMPANY_SEGMENT; segment filter via USER_SEGMENT_MAP
     - `v_events`: BUSINESS_EVENT; no segment filter; full event details
     - `v_forecast_business`: FORECAST JOIN FORECAST_LINE WHERE kind='business'; no segment filter
     - `v_my_queries`: QUERY_EXECUTION LEFT JOIN INDEX_RECOMMENDATION; filtered to `db_user = SUBSTRING_INDEX(USER(),'@',1)` — this is a per-user filter, NOT a segment filter
     - `v_events_min`: BUSINESS_EVENT; only columns: name, start_date, end_date, expected_lift; no revenue columns
     - `v_forecast_database`: FORECAST JOIN FORECAST_LINE WHERE kind='database'
-    - `v_vm_workload`: AZURE_VM aggregated by trace_day; no segment filter; engineer-accessible
-    - `v_partitions`: `information_schema.PARTITIONS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='FACT_SALES'`
-    - Segment filter pattern for v_sales and v_financials only: `WHERE segment_id IN (SELECT segment_id FROM USER_SEGMENT_MAP WHERE db_user = SUBSTRING_INDEX(USER(),'@',1))`
+    - `v_vm_workload`: ROW-LEVEL on AZURE_VM (vm_id, subscription_id, deployment_id, trace_day, created_at, deleted_at, max_cpu, avg_cpu, p95_max_cpu, vm_category, vcpu_bucket, memory_bucket); no segment filter; AZURE_VM not aliased to keep EXPLAIN ANALYZE output unambiguous
+    - `v_partitions`: `information_schema.PARTITIONS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='AZURE_VM'`
+    - Segment filter pattern for v_financials only: `WHERE segment_id IN (SELECT segment_id FROM USER_SEGMENT_MAP WHERE db_user = SUBSTRING_INDEX(USER(),'@',1))`
     - _Requirements: 2.1, 2.3, 10.1, 16.2_
 
   - [x] 1.4 Write 04_routines.sql — stubs for all stored procedures
