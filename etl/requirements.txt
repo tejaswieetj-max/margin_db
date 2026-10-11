@@ -4,3 +4,4 @@ pytrends==4.9.2
 hypothesis==6.168.5
 pandas==3.0.6
 numpy==2.5.3
+python-dateutil==2.9.0.post0
