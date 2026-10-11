@@ -380,18 +380,14 @@ Six-stage implementation plan following the staged development process (Requirem
     - `SUBSTRING_INDEX(USER(),'@',1)` for `attempted_by` in CONFLICT_LOG
     - _Requirements: 12.1, 12.2_
 
-  - [ ] 3.5 Implement sp_place_order
-    - Replace stub: EXIT HANDLER + RESIGNAL pattern; on any SQLEXCEPTION: ROLLBACK + RESIGNAL
-    - `JSON_TABLE` to iterate `p_items` JSON array
-    - Fixed savepoint names: `sp_orders`, `sp_item`, `sp_fact`
-    - INSERT ORDERS → INSERT ORDER_ITEM via JSON_TABLE → INSERT FACT_SALES aggregate (joined to PRODUCT for segment_id)
-    - No partial rows after rollback
+  - [REMOVED] 3.5 Implement sp_place_order
+    - REMOVED / NOT APPLICABLE: Order placement and synthetic transaction tables (ORDERS, ORDER_ITEM, FACT_SALES) are unused with real Azure VM workload data
     - _Requirements: 13.1_
 
   - [ ] 3.6 Implement sp_recommend_index and sp_record_index_test
     - `sp_recommend_index(IN p_qe_id BIGINT, IN p_table VARCHAR(64), IN p_columns_csv VARCHAR(500), OUT p_rec_id INT)`:
       1. Deduplicate: check existing active rec for same `(table_name, columns_csv)` with status in ('proposed','testing','applied'); if found, RETURN (no-op)
-      2. Whitelist check: `p_table` must be in allowed list (FACT_SALES); `SIGNAL SQLSTATE '45001'` if not
+      2. Whitelist check: `p_table` must be in allowed list (AZURE_VM); `SIGNAL SQLSTATE '45001'` if not
       3. Column validation: each column in `p_columns_csv` must match `^\w+$` AND exist in `information_schema.COLUMNS` for `p_table`; `SIGNAL SQLSTATE '45002'` if invalid
       4. `INSERT INTO INDEX_RECOMMENDATION (..., index_name, status) VALUES (..., 'placeholder', 'testing')`
       5. `SET v_rec_id = LAST_INSERT_ID(); SET p_rec_id = v_rec_id`
@@ -411,7 +407,7 @@ Six-stage implementation plan following the staged development process (Requirem
 
   - [ ] 3.8 Implement sp_add_partition
     - Dynamic SQL: `REORGANIZE PARTITION p_catch INTO (new named partition + new p_catch MAXVALUE)`
-    - Whitelist `p_table_name` (only FACT_SALES allowed); SIGNAL if not
+    - Whitelist `p_table_name` (only AZURE_VM allowed); SIGNAL if not
     - Generate partition name from boundary date in `p_FYyyQq` format
     - PREPARE/EXECUTE/DEALLOCATE PREPARE pattern
     - _Requirements: 14.2_
@@ -462,7 +458,7 @@ Six-stage implementation plan following the staged development process (Requirem
     - Call `sp_margin_decomposition` with known segment/period values; verify 2-component decomposition result set (revenue effect, margin-rate effect)
     - Verify AUDIT_LOG trigger fires on `PRICING_RULE` UPDATE (check row count before/after)
     - Verify both EVENTs (`ev_snapshot_sizes`, `ev_recalc_forecasts`) appear as ENABLED in `information_schema.EVENTS`
-    - Verify EXPLAIN ANALYZE on `FACT_SALES` still shows full table scan (no index added yet)
+    - Verify EXPLAIN ANALYZE on `AZURE_VM` still shows full table scan (no index added yet)
     - Write `docs/stage_3_report.md`
     - **git commit**: `git add -A && git commit -m "Stage 3: stored routines, telemetry SPs, backfill"`
     - _Requirements: 22.1, 22.2_
@@ -499,7 +495,7 @@ Six-stage implementation plan following the staged development process (Requirem
       - Parse `actual time=N..M loops=L`: `actual_ms = M` (per-loop end time); `total_ms = M × loops`
       - `pct_time = node.total_ms / root.total_ms × 100`
       - `duration_ms` (for QUERY_EXECUTION) = root `actual_ms` (M from root node, not root total_ms)
-      - `operation` = text before first `  (`; `table_name` from `Table scan on <tbl>` (FACT_SALES has no alias)
+      - `operation` = text before first `  (`; `table_name` from `Table scan on <tbl>` (AZURE_VM has no alias)
       - `rows_examined` = SUM(`actual_rows × loops`) across all "Table scan on" nodes
     - `write_telemetry(conn_analyst, conn_telemetry, sql_text, started_at)`:
       1. Run `EXPLAIN ANALYZE {sql_text}` on conn_analyst; parse plan
@@ -526,7 +522,7 @@ Six-stage implementation plan following the staged development process (Requirem
     - `POST /sql`: validate single SELECT or `WITH...SELECT`; reject `re.search(r';\s*\S', sql)`; reject DML at word boundary; call `write_telemetry`; if flagged enqueue background task; return `{qe_id, flagged, rows, duration_ms}` immediately; ~60s timeout via `MAX_EXECUTION_TIME=30000`
     - `PUT /pricing/{rule_id}`: `call_sp_out` with `sp_update_pricing_rule`; p_status='OK' → HTTP 200; 'CONFLICT' → HTTP 409
     - `GET /my-queries`: `SELECT * FROM v_my_queries`
-    - `POST /analyst/orders`: `call_sp(conn, "sp_place_order", [...])`; test/demo only
+    - `POST /analyst/orders`: REMOVED / NOT APPLICABLE (order placement unused)
     - _Requirements: 6.2, 6.5, 6.6, 1.4, 1.8, 12.3, 13.2, 15.2, 16.1_
 
   - [ ] 4.6 Implement engineer router
@@ -626,7 +622,7 @@ Six-stage implementation plan following the staged development process (Requirem
 
   - [ ] 5.6 Implement analyst MarginDecomposition page
     - Inputs: segment dropdown (options: Productivity and Business Processes, Intelligent Cloud, More Personal Computing), period_a (text), period_b (text), optional group_by; calls `GET /margin` with group_by passed as query param
-    - Render Recharts bar chart with four decomposition components (volume, price, discount, mix)
+    - Render Recharts bar chart with segment-level decomposition (revenue effect, margin-rate effect)
     - _Requirements: 15.3_
 
   - [ ] 5.7 Implement analyst BusinessForecast page
@@ -670,9 +666,9 @@ Six-stage implementation plan following the staged development process (Requirem
     - `npm run build`; assert exit 0 with no errors
     - **HUMAN STEP**: Start backend (`uvicorn backend.app.main:app --reload`) and frontend (`npm run dev`) in separate terminals; verify in browser:
       1. Navigate to `/analyst/events` without logging in → redirects to `/login` within 1 second
-      2. Log in as `analyst_demo` → Event Calendar shows events; v_vm_workload is accessible only (segment=MPC, product_line='Gaming'); v_financials returns MPC rows only
+      2. Log in as `analyst_demo` → Event Calendar shows events; `v_vm_workload` is accessible; `v_financials` returns MPC rows only
       3. Log in as `engineer_demo` → engineer dashboard loads; no revenue data, no pricing data visible
-      4. `POST /sql` with Heavy_Demo_Query → flagged badge appears; poll MyQueries page until index recommendation appears
+      4. `POST /sql` with Heavy_Demo_Query (scanning AZURE_VM via `v_vm_workload`) → flagged badge appears; poll MyQueries page until index recommendation appears
       5. Engineer approves index → index visible in PartitionManager after polling
     - Write `docs/stage_5_report.md`
     - **git commit**: `git add -A && git commit -m "Stage 5: frontend complete"`
