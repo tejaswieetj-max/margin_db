@@ -280,45 +280,45 @@ Six-stage implementation plan following the staged development process (Requirem
     - `INSERT IGNORE` for idempotency; log count of rows inserted per event
     - _Requirements: 4.2_
 
-  - [ ] 2.10 Write gen_synthetic_sales.py
-    - **REWRITTEN (pending owner re-verification)**: Gaming reconciliation target now sourced from GAMING_REVENUE_SERIES (real data); hardcoded 70/30 MPC split removed
-    - Read dimension tables, `QUARTERLY_FINANCIALS`, and `GAMING_REVENUE_SERIES` from DB
-    - Generate 2M–5M `FACT_SALES` rows at Daily_Aggregate grain for FY23Q1–FY26Q4 only (2022-07-01 to 2026-06-30); `is_synthetic=TRUE` (column default)
-    - Reconciliation — three independent groups: Gaming, MPC (excl. Gaming), Productivity+Cloud; Gaming target = `GAMING_REVENUE_SERIES.revenue_m`; MPC non-Gaming target = QUARTERLY_FINANCIALS MPC total − GAMING_REVENUE_SERIES Gaming; PBP+IC target = QUARTERLY_FINANCIALS PBP + IC; aborts loudly if any required row is missing; ABORT if any combination exceeds 0.1%
-    - Apply event lifts from `EVENT_WINDOW_MONTH` during event windows
-    - Seasonality: Black Friday rows × 3.0, December rows × 1.5
-    - Device mix: Xbox 40%, Windows PC 35%, Mobile 15%, Cloud 5%, Mac 5%; `oem` non-null only for Windows PC rows
-    - `unit_cost_ratio` drives `cost_amount = unit_price × unit_cost_ratio` for PBP/IC/MPC products (synthetic only, never presented as real margin). Gaming products: `cost_amount = NULL` (no Gaming cost data disclosed; do not fabricate). Document unit_cost_ratio values in `docs/MARGIN_DB.md` with an explicit label "synthetic approximation — not reported data"
-    - Seeded RNG from `SYNTHETIC_SEED` env var (default 42)
-    - Write CSV chunks to `data/clean/`; also write 100k-row ORDERS/ORDER_ITEM subset
-    - All FK column values (`product_id`, `device_id`, `region_id`, `channel_id`) pre-loaded from DB; no random ID generation
-    - After `LOAD DATA LOCAL INFILE` completes:
-      - `slope = 0.01 × current_mb` (labelled simulation: 1% daily growth rate)
-      - `DB_ALLOCATED_MB = ROUND((current_mb + 25 × slope) / 0.9, 2) = ROUND(current_mb × 1.25 / 0.9, 2)`
-      - where `current_mb = total data+index MB from information_schema.TABLES`
-      - `INSERT INTO CONFIG (config_key, config_value) VALUES ('DB_ALLOCATED_MB', computed_value) ON DUPLICATE KEY UPDATE config_value = VALUES(config_value)`
+  - [ ] 2.9b Profile and load Azure VM workload table
+    - **Dataset**: `data/raw/azure/vmtable.csv` — 2,695,548 rows, 11 columns, no header, trace-relative seconds
+    - **Columns** (in order): vm_id, subscription_id, deployment_id, created_at, deleted_at, max_cpu, avg_cpu, p95_max_cpu, vm_category, vcpu_bucket, memory_bucket
+    - **Profile CSV first**: Write `etl/profile_azure_csv.py` to read first 10K rows, infer data types, check ranges, output DDL recommendations
+    - **DDL**: Create `AZURE_VM` table in migration `sql/migrations/10_azure_vm.sql`:
+      - PK: (vm_id, trace_day) where trace_day = FLOOR(created_at / 86400)
+      - PARTITION BY RANGE on trace_day (in the PK)
+      - NO FK constraints
+      - Label: "Azure Public Dataset V2 VM trace (real, Microsoft-published workload data)"
+      - source_url and licence: TODO placeholders (do not state licence from memory)
+    - **Load**: Write `etl/load_azure_vm.py`:
+      - LOAD DATA LOCAL INFILE in batches by trace_day range (e.g., days 0-29, 30-59, etc.)
+      - After each batch: INSERT INTO DB_SIZE_SNAPSHOT (is_synthetic=FALSE, label='load-progress snapshot')
+      - No clamping, no invented dates, preserve all trace-relative times as-is
+      - Final verification: row count MUST be exactly 2,695,548
+    - **Checksum file**: Write `data/raw/azure/CHECKSUM.txt` with SHA256 and row count; keep data/raw/azure/ in .gitignore
+    - _Requirements: 4.11, 21.1, 21.2_
+
+  - [REMOVED] 2.10 Write gen_synthetic_sales.py
+    - **REMOVED**: Synthetic sales generation not needed with real Azure VM workload data
     - _Requirements: 4.6, 21.1_
 
   - [ ] 2.11 Write load_sales.sh — ETL master orchestrator
     - **UPDATED (pending owner re-verification)**: Step 3b `load_segments_gaming.py` added between segments.csv human confirmation and load_steam.py
-    - ETL sequence: `fetch_edgar.py` → `load_financials.py` → [HUMAN: confirm segments.csv] → `load_segments_gaming.py` → `load_steam.py` → `load_trends.py` → [HUMAN: confirm events.csv] → `load_events.py` → `compute_event_windows.py` → `gen_synthetic_sales.py` → LOAD DATA LOCAL INFILE loop → reconciliation check
+    - ETL sequence: `fetch_edgar.py` → `load_financials.py` → [HUMAN: confirm segments.csv] → `load_segments_gaming.py` → `load_steam.py` → `load_trends.py` → [HUMAN: confirm events.csv] → `load_events.py` → `compute_event_windows.py`; no synthetic sales generation
     - `set -euo pipefail`; log UTC + source filename on any step failure; halt on failure
-    - LOAD DATA LOCAL INFILE processes `data/clean/sales_chunk_*.csv` one chunk at a time
-    - **HUMAN STEP** before bulk load: ask operator to confirm dropping the `FACT_SALES BEFORE INSERT` trigger for performance; recreate trigger immediately after bulk load completes
-    - 30-minute timeout wrapper (use `timeout 1800` or equivalent)
     - _Requirements: 4.8, 4.10, 4.11_
 
   - [ ] 2.12 Stage 2 gate — seq-scan verification
-    - **HUMAN STEP**: Confirm ETL is complete and `FACT_SALES` has >= 2M rows; confirm no secondary index on `(product_id, sale_date)` exists
-    - Execute Heavy_Demo_Query via MySQL CLI as `analyst_all` (no backend required at this stage):
-      `mysql -u analyst_all -p$DEMO_ANALYST_ALL_PASSWORD $DB_NAME < tests/heavy_demo_query.sql`
-    - Run `EXPLAIN` on the underlying `v_sales` query; output must show full table scan on `FACT_SALES`
-    - Query must take > 3 seconds; if < 3s increase row count (up to 5M) and reload
-    - Manually create candidate index: `CREATE INDEX idx_stage2_test ON FACT_SALES (product_id, sale_date) ALGORITHM=INPLACE;`
+    - **HUMAN STEP**: Confirm ETL is complete and `AZURE_VM has exactly 2,695,548 rows; confirm no secondary index on AZURE_VM exists
+    - Execute Heavy_Demo_Query via MySQL CLI as `engineer_demo` (no backend required at this stage):
+      `mysql -u engineer_demo -p$DEMO_ENGINEER_PASSWORD $DB_NAME < tests/heavy_demo_query.sql`
+    - Run `EXPLAIN` on the underlying `v_vm_workload` query; output must show full table scan on `AZURE_VM`
+    - Query must take > 2 seconds; if < 2s, check query is scanning AZURE_VM without index
+    - Manually create candidate index: `CREATE INDEX idx_stage2_test ON AZURE_VM (vm_id, trace_day) ALGORITHM=INPLACE;`
     - Rerun the query; confirm >= 50% speedup; record before/after times in `docs/stage_2_report.md`
-    - Drop the index: `DROP INDEX idx_stage2_test ON FACT_SALES;`
+    - Drop the index: `DROP INDEX idx_stage2_test ON AZURE_VM;`
     - Record Heavy_Demo_Query SQL in `tests/heavy_demo_query.sql`
-    - Write `docs/stage_2_report.md`: ETL commands, row counts, reconciliation output, EXPLAIN output, query duration before/after index
+    - Write `docs/stage_2_report.md`: ETL commands, row counts, row counts (2,695,548 expected for AZURE_VM), EXPLAIN output, query duration before/after index
     - Verify `information_schema_stats_expiry=0` SESSION effect; record result in report
     - **git commit**: `git add -A && git commit -m "Stage 2: ETL complete"`
     - **HUMAN STEP — mysqldump**: Prompt operator to run `mkdir -p ~/margin_db_backups && mysqldump -u $ADMIN_USER $DB_NAME > ~/margin_db_backups/margin_db_stage2.sql` before proceeding to Stage 3; dump file written outside repo to avoid large files in git history
