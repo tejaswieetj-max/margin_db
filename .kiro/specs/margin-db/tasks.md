@@ -310,16 +310,16 @@ Six-stage implementation plan following the staged development process (Requirem
     - _Requirements: 4.8, 4.10, 4.11_
 
   - [ ] 2.12 Stage 2 gate — seq-scan verification
-    - **HUMAN STEP**: Confirm ETL is complete and `AZURE_VM has exactly 2,695,548 rows; confirm no secondary index on AZURE_VM exists
-    - Execute Heavy_Demo_Query via MySQL CLI as `engineer_demo` (no backend required at this stage):
+    - **HUMAN STEP**: Confirm ETL is complete and AZURE_VM has exactly 2,695,548 rows; confirm no secondary index on AZURE_VM exists
+    - Execute Heavy_Demo_Query via MySQL CLI as the user who has the grant (`engineer_demo` or `analyst_demo`; no backend required at this stage):
       `mysql -u engineer_demo -p$DEMO_ENGINEER_PASSWORD $DB_NAME < tests/heavy_demo_query.sql`
     - Run `EXPLAIN` on the underlying `v_vm_workload` query; output must show full table scan on `AZURE_VM`
-    - Query must take > 2 seconds; if < 2s, check query is scanning AZURE_VM without index
-    - Manually create candidate index: `CREATE INDEX idx_stage2_test ON AZURE_VM (vm_id, trace_day) ALGORITHM=INPLACE;`
+    - Query must take > 2 seconds; if < 2s, check query is scanning AZURE_VM without index (query filters/groups on vm_category, vcpu_bucket, created_at)
+    - Manually create candidate index on non-primary-key columns (PK is (vm_id, trace_day), so index on those shows no speedup): `CREATE INDEX idx_stage2_test ON AZURE_VM (vm_category, vcpu_bucket, created_at) ALGORITHM=INPLACE;`
     - Rerun the query; confirm >= 50% speedup; record before/after times in `docs/stage_2_report.md`
     - Drop the index: `DROP INDEX idx_stage2_test ON AZURE_VM;`
     - Record Heavy_Demo_Query SQL in `tests/heavy_demo_query.sql`
-    - Write `docs/stage_2_report.md`: ETL commands, row counts, row counts (2,695,548 expected for AZURE_VM), EXPLAIN output, query duration before/after index
+    - Write `docs/stage_2_report.md`: ETL commands, row counts (2,695,548 expected for AZURE_VM), EXPLAIN output, query duration before/after index
     - Verify `information_schema_stats_expiry=0` SESSION effect; record result in report
     - **git commit**: `git add -A && git commit -m "Stage 2: ETL complete"`
     - **HUMAN STEP — mysqldump**: Prompt operator to run `mkdir -p ~/margin_db_backups && mysqldump -u $ADMIN_USER $DB_NAME > ~/margin_db_backups/margin_db_stage2.sql` before proceeding to Stage 3; dump file written outside repo to avoid large files in git history
