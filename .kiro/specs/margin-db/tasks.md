@@ -329,13 +329,12 @@ Six-stage implementation plan following the staged development process (Requirem
 
   - [ ] 3.1 Implement sp_snapshot_sizes and load-progress snapshots
     - Full `sp_snapshot_sizes`: `SET SESSION information_schema_stats_expiry=0`; INSERT INTO `DB_SIZE_SNAPSHOT` from `information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE()`; use `ON DUPLICATE KEY UPDATE` on `snapped_at` (UNIQUE KEY prevents duplicates)
-    - Write `etl/load-progress snapshots: INSERT after each AZURE_VM batch load (already done in task 2.9b); `INSERT IGNORE` for idempotency
+    - Load-progress snapshots: INSERT into `DB_SIZE_SNAPSHOT` after each AZURE_VM batch load (already done in task 2.9b); `INSERT IGNORE` for idempotency
     - Verify `ev_snapshot_sizes` EVENT is ENABLED in `information_schema.EVENTS`
     - _Requirements: 17.1, 17.2, 17.3_
 
   - [ ] 3.2 Implement sp_margin_decomposition
-    - Replace stub with full logic: intersect the requested segment with the caller's USER_SEGMENT_MAP using `WHERE segment_id IN (SELECT segment_id FROM USER_SEGMENT_MAP WHERE db_user=SUBSTRING_INDEX(USER(),'@',1)) AND segment_name = p_segment`; also apply product_line filter if USM.product_line IS NOT NULL; if no matching rows, return empty result
-    - Read from QUARTERLY_FINANCIALS; compute Δoperating_income, Δrevenue, Δmargin_rate per segment; respect basis caveat
+    - Replace stub with full logic: intersect the requested segment with the caller's USER_SEGMENT_MAP using `WHERE segment_id IN (SELECT segment_id FROM USER_SEGMENT_MAP WHERE db_user=SUBSTRING_INDEX(USER(),'@',1)) AND name = p_segment`; also apply product_line filter if USM.product_line IS NOT NULL; if no matching rows, return empty result
     - Read from QUARTERLY_FINANCIALS; compute Δoperating_income, Δrevenue, Δmargin_rate per segment; respect basis caveat
     - Revenue effect = Δrevenue × period_A_margin_rate; Margin-rate effect = period_B_revenue × Δmargin_rate
     - Compute segment-level decomposition on QUARTERLY_FINANCIALS: operating income change = revenue effect + margin-rate effect
@@ -460,7 +459,7 @@ Six-stage implementation plan following the staged development process (Requirem
     - Re-run `tests/run_role_tests.sh`; verify no regressions
     - Call `sp_snapshot_sizes()` via MySQL CLI; verify row appears in `DB_SIZE_SNAPSHOT`
     - Verify `information_schema_stats_expiry=0` SESSION effect: run INSERT, re-query `information_schema.TABLES`, verify `data_length` updates; record in `docs/stage_3_report.md`
-    - Call `sp_margin_decomposition` with known segment/period values; verify 4-row result set
+    - Call `sp_margin_decomposition` with known segment/period values; verify 2-component decomposition result set (revenue effect, margin-rate effect)
     - Verify AUDIT_LOG trigger fires on `PRICING_RULE` UPDATE (check row count before/after)
     - Verify both EVENTs (`ev_snapshot_sizes`, `ev_recalc_forecasts`) appear as ENABLED in `information_schema.EVENTS`
     - Verify EXPLAIN ANALYZE on `FACT_SALES` still shows full table scan (no index added yet)
