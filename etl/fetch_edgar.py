@@ -1,23 +1,18 @@
 """
 fetch_edgar.py — Fetch Microsoft quarterly financial facts from SEC EDGAR.
 
-Source: https://data.sec.gov/api/xbrl/companyfacts/CIK0000789019.json
-Writes:  data/raw/msft_facts.json
+Fiscal year determination:
+  Microsoft FY ends June 30. Fiscal year = calendar year of June 30 endpoint.
+  Formula: If end_month >= 7: fiscal_year = calendar_year + 1
+           If end_month <= 6: fiscal_year = calendar_year
 
-Metrics extracted:
-  - Revenue:          us-gaap.Revenues
-  - COGS:             us-gaap.CostOfRevenue
-  - Operating Income: us-gaap.OperatingIncomeLoss
+Quarterly identification by DURATION (~days between start and end):
+  75-100 days:   Single quarter (Q1, or explicit Q4 in 10-K)
+  165-195 days:  Q2 (YTD cumulative: 6 months)
+  255-285 days:  Q3 (YTD cumulative: 9 months)  
+  350-380 days:  FY (annual)
 
-Q4 derivation method (documented in docs/MARGIN_DB.md):
-  Microsoft does not always file an explicit Q4 10-Q because the 10-K covers
-  the full fiscal year. SEC EDGAR reports Q2 and Q3 as YTD cumulative values
-  (Q2 = 6-month total, Q3 = 9-month total). We derive Q4 as:
-      Q4 = FY_annual_value − Q3_ytd
-  where FY_annual_value is the value associated with fp="FY" (or form="10-K")
-  for the same fiscal year and metric, and Q3_ytd is the 9-month cumulative
-  total (which already includes Q1+Q2+Q3). If the FY annual value is not
-  available for a given metric we cannot derive Q4 and we log the gap.
+Q4 derivation: Q4 = FY_annual - Q3_ytd (the 9-month YTD total)
 
 Requirements: 4.1, 4.10, 21.1
 """
@@ -32,47 +27,27 @@ from pathlib import Path
 import requests
 from dotenv import load_dotenv
 
-# ---------------------------------------------------------------------------
-# Configuration
-# ---------------------------------------------------------------------------
-
 EDGAR_URL = "https://data.sec.gov/api/xbrl/companyfacts/CIK0000789019.json"
 
-# Map friendly metric names → EDGAR us-gaap concept names
 METRIC_MAP = {
-    "revenue": "Revenues",
-    "cogs": "CostOfRevenue",
-    "operating_income": "OperatingIncomeLoss",
+    "revenue": ["Revenues", "RevenueFromContractWithCustomerExcludingAssessedTax"],
+    "cogs": ["CostOfRevenue"],
+    "operating_income": ["OperatingIncomeLoss"],
 }
 
-# Paths are relative to the project root (one level above etl/)
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 OUTPUT_PATH = PROJECT_ROOT / "data" / "raw" / "msft_facts.json"
-
-# ---------------------------------------------------------------------------
-# Logging
-# ---------------------------------------------------------------------------
 
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s UTC %(levelname)s %(message)s",
     datefmt="%Y-%m-%dT%H:%M:%S",
 )
-# Force UTC timestamps in log records
 logging.Formatter.converter = lambda *args: datetime.now(timezone.utc).timetuple()
-
 logger = logging.getLogger(__name__)
 
 
-# ---------------------------------------------------------------------------
-# Fetch
-# ---------------------------------------------------------------------------
-
 def fetch_company_facts(url: str, user_agent: str) -> dict:
-    """GET the SEC EDGAR company-facts JSON.
-
-    Non-200 responses are logged (with UTC timestamp + URL) and cause exit(1).
-    """
     logger.info("Fetching %s", url)
     try:
         response = requests.get(url, headers={"User-Agent": user_agent}, timeout=30)
@@ -83,305 +58,224 @@ def fetch_company_facts(url: str, user_agent: str) -> dict:
 
     if response.status_code != 200:
         utc_now = datetime.now(timezone.utc).isoformat()
-        logger.error(
-            "%s | %s | HTTP %s", utc_now, url, response.status_code
-        )
+        logger.error("%s | %s | HTTP %s", utc_now, url, response.status_code)
         sys.exit(1)
 
     return response.json()
 
 
-# ---------------------------------------------------------------------------
-# Extract quarterly frames from a single EDGAR concept
-# ---------------------------------------------------------------------------
+def get_fiscal_year_from_end_date(end_date_str: str) -> int:
+    """Determine fiscal year from period end date.
+    Microsoft FY ends June 30.
+    If end_month >= 7: fiscal_year = calendar_year + 1
+    If end_month <= 6: fiscal_year = calendar_year
+    """
+    try:
+        end_date = datetime.strptime(end_date_str, "%Y-%m-%d")
+        return end_date.year + 1 if end_date.month >= 7 else end_date.year
+    except:
+        return None
+
+
+def classify_period_by_duration(start: str, end: str) -> str:
+    """Classify period by duration in days.
+    75-100: Q1, 165-195: Q2, 255-285: Q3, 350-380: FY
+    """
+    try:
+        start_dt = datetime.strptime(start, "%Y-%m-%d")
+        end_dt = datetime.strptime(end, "%Y-%m-%d")
+        duration = (end_dt - start_dt).days
+        
+        if 75 <= duration <= 100:
+            # Single quarter - if June 30 end, it's Q4
+            return "Q4" if end_dt.month == 6 and end_dt.day == 30 else "Q1"
+        elif 165 <= duration <= 195:
+            return "Q2"
+        elif 255 <= duration <= 285:
+            return "Q3"
+        elif 350 <= duration <= 380:
+            return "FY"
+        return None
+    except:
+        return None
+
 
 def extract_usd_units(concept_data: dict) -> list[dict]:
-    """Return the list of USD-unit fact entries for a concept, or []."""
     return concept_data.get("units", {}).get("USD", [])
 
 
-def is_quarterly_frame(entry: dict) -> bool:
-    """True if this entry represents a single fiscal quarter (not annual/TTM).
-
-    We keep:
-      fp in {Q1, Q2, Q3, Q4}  — explicitly filed quarterly frame
-      fp == FY                 — annual frame (used for Q4 derivation only)
-      form == 10-K             — annual filing (used for Q4 derivation only)
-
-    We exclude:
-      CY* frames (calendar-year TTM entries from the frame field)
-      fp == H1 / H2 / 9M      — semi-annual or 9-month frames
-      
-    We also filter by end date to ensure we get the correct fiscal year's data.
-    The end date should match the expected fiscal period end based on Microsoft's
-    fiscal year (ends June 30).
-    """
-    fp = entry.get("fp", "")
-    form = entry.get("form", "")
-    fy = entry.get("fy")
-    end = entry.get("end", "")
-    
-    # Basic filter: must be quarterly or annual
-    if not (fp in {"Q1", "Q2", "Q3", "Q4", "FY"} or form == "10-K"):
-        return False
-    
-    # End date filter: For Microsoft FY ending June 30
-    # FY2010 means fiscal year ending June 30, 2010
-    # Q1 ends Sept 30 (of prior calendar year)
-    # Q2 ends Dec 31 (of prior calendar year)  
-    # Q3 ends Mar 31 (of current calendar year)
-    # Q4 ends June 30 (of current calendar year)
-    # FY ends June 30 (of current calendar year)
-    
-    if not fy or not end:
-        return False
-    
-    # Expected end dates for each fiscal quarter/year
-    expected_ends = {
-        "Q1": f"{fy-1}-09-30",  # Q1 ends Sept 30 of prior calendar year
-        "Q2": f"{fy-1}-12-31",  # Q2 ends Dec 31 of prior calendar year
-        "Q3": f"{fy}-03-31",    # Q3 ends Mar 31 of current calendar year
-        "Q4": f"{fy}-06-30",    # Q4 ends June 30 of current calendar year
-        "FY": f"{fy}-06-30",    # FY ends June 30 of current calendar year
-    }
-    
-    if fp in expected_ends:
-        return end == expected_ends[fp]
-    elif form == "10-K":
-        # Annual filing should end on June 30 of the fiscal year
-        return end == f"{fy}-06-30"
-    
-    return False
-
-
-# ---------------------------------------------------------------------------
-# Deduplication: keep latest filed_date per (fy, fp/form, metric)
-# ---------------------------------------------------------------------------
-
 def deduplicate(entries: list[dict]) -> list[dict]:
-    """Keep the entry with the latest 'filed' date per (fy, fp) key.
-
-    Requirement 4.7 / 4.10: deduplicate restatements by keeping latest filed_date.
-    """
+    """Keep latest filed date per (fiscal_year, period_type)."""
     best: dict[tuple, dict] = {}
     for entry in entries:
-        fy = entry.get("fy")
-        fp = entry.get("fp", "")
-        form = entry.get("form", "")
-        # Normalise annual marker
-        fp_key = "FY" if (fp == "FY" or form == "10-K") else fp
-        key = (fy, fp_key)
+        fy = entry.get("fiscal_year")
+        pt = entry.get("period_type")
+        if not fy or not pt:
+            continue
+        key = (fy, pt)
         filed = entry.get("filed", "")
-        existing = best.get(key)
-        if existing is None or filed > existing.get("filed", ""):
+        if key not in best or filed > best[key].get("filed", ""):
             best[key] = entry
     return list(best.values())
 
 
-# ---------------------------------------------------------------------------
-# Build a per-(fy, quarter) lookup from deduplicated entries
-# ---------------------------------------------------------------------------
-
-def build_quarterly_lookup(
-    entries: list[dict],
-) -> tuple[dict[tuple[int, int], dict], dict[int, dict]]:
-    """Return (quarterly_map, annual_map).
-
-    quarterly_map: {(fy, quarter_int): entry}  — fp Q1/Q2/Q3/Q4 entries
-    annual_map:    {fy: entry}                  — fp FY / 10-K entries
-    """
-    quarterly: dict[tuple[int, int], dict] = {}
-    annual: dict[int, dict] = {}
-
-    for entry in entries:
-        fy = entry.get("fy")
-        fp = entry.get("fp", "")
-        form = entry.get("form", "")
-
-        if fy is None:
-            continue
-
-        # Annual entry
-        if fp == "FY" or form == "10-K":
-            annual[fy] = entry
-            continue
-
-        # Explicit quarterly entry
-        fp_to_q = {"Q1": 1, "Q2": 2, "Q3": 3, "Q4": 4}
-        q = fp_to_q.get(fp)
-        if q is not None:
-            quarterly[(fy, q)] = entry
-
-    return quarterly, annual
-
-
-# ---------------------------------------------------------------------------
-# Q4 derivation
-# ---------------------------------------------------------------------------
-
-def derive_q4(
-    metric: str,
-    quarterly: dict[tuple[int, int], dict],
-    annual: dict[int, dict],
-    missing_quarters: list[str],
-) -> dict[tuple[int, int], dict]:
-    """Derive Q4 entries where not already present.
-
-    Q4 = FY_annual - Q3_ytd
-
-    SEC EDGAR reports Q2 and Q3 as YTD cumulative values (Q2 is 6-month total,
-    Q3 is 9-month total which includes Q1+Q2+Q3). Therefore, we only need to
-    subtract Q3_ytd from the full year to get Q4.
-
-    If the FY annual is not available, or Q3 is missing, we log the gap and
-    add a note to missing_quarters.
-
-    Returns an updated quarterly map that includes derived Q4 entries.
-    """
-    result = dict(quarterly)  # shallow copy
-
-    # Collect all fiscal years we have any data for
-    all_fys: set[int] = set()
-    for (fy, _q) in quarterly:
-        all_fys.add(fy)
-    all_fys.update(annual.keys())
-
-    for fy in sorted(all_fys):
-        # Skip if Q4 is already explicitly present
-        if (fy, 4) in result:
-            continue
-
-        # Need the annual value
-        ann = annual.get(fy)
-        if ann is None:
-            msg = f"metric={metric} fy={fy} Q4: FY annual not available — Q4 skipped"
-            logger.warning(msg)
-            missing_quarters.append(msg)
-            print(f"MISSING QUARTER: {msg}")
-            continue
-
-        # Need Q3 (which is YTD cumulative: Q1+Q2+Q3)
-        q3 = quarterly.get((fy, 3))
-        if q3 is None:
-            msg = f"metric={metric} fy={fy} Q4: Q3 not available — cannot derive Q4"
-            logger.warning(msg)
-            missing_quarters.append(msg)
-            print(f"MISSING QUARTER: {msg}")
-            continue
-
-        fy_val = ann["val"]
-        q3_ytd = q3["val"]
-        derived_val = fy_val - q3_ytd
-
-        # Use the annual entry's filed date as the filed_date for derived Q4
-        result[(fy, 4)] = {
-            "fy": fy,
-            "fp": "Q4",
-            "val": derived_val,
-            "filed": ann.get("filed", ""),
-            "end": ann.get("end", ""),
-            "derived": True,
-        }
-        logger.debug(
-            "Derived Q4 for metric=%s fy=%d: %s (FY) - %s (Q3_ytd) = %s",
-            metric,
-            fy,
-            fy_val,
-            q3_ytd,
-            derived_val,
-        )
-
-    return result
-
-
-# ---------------------------------------------------------------------------
-# Main extraction logic
-# ---------------------------------------------------------------------------
-
 def extract_facts(company_facts: dict) -> list[dict]:
-    """Extract quarterly financial facts and return output records.
-
-    Returns a list of dicts matching the output schema:
-      {fiscal_year, fiscal_quarter, metric, value, filed_date}
-    """
     us_gaap = company_facts.get("facts", {}).get("us-gaap", {})
     missing_quarters: list[str] = []
     output: list[dict] = []
 
-    for metric_name, concept_name in METRIC_MAP.items():
-        concept = us_gaap.get(concept_name)
-        if concept is None:
-            logger.warning("Concept %s not found in EDGAR data — skipping", concept_name)
+    for metric_name, concept_names in METRIC_MAP.items():
+        concept_data = None
+        used_concept = None
+        for concept_name in concept_names:
+            concept_data = us_gaap.get(concept_name)
+            if concept_data:
+                used_concept = concept_name
+                break
+        
+        if not concept_data:
+            logger.warning("No concept for %s (tried %s)", metric_name, concept_names)
             continue
-
-        all_entries = extract_usd_units(concept)
-
-        # Keep only quarterly and annual frames
-        filtered = [e for e in all_entries if is_quarterly_frame(e)]
-
-        # Deduplicate restatements: keep latest filed_date per (fy, fp)
-        deduped = deduplicate(filtered)
-
-        # Split into quarterly and annual maps
-        quarterly, annual = build_quarterly_lookup(deduped)
-
-        # Derive missing Q4 values
-        quarterly = derive_q4(metric_name, quarterly, annual, missing_quarters)
-
-        # Build output rows for Q1–Q4 only (not FY annual rows)
-        for (fy, q), entry in sorted(quarterly.items()):
-            if q not in (1, 2, 3, 4):
+        
+        logger.info("Using %s for %s", used_concept, metric_name)
+        
+        all_entries = extract_usd_units(concept_data)
+        
+        processed = []
+        for entry in all_entries:
+            start = entry.get("start", "")
+            end = entry.get("end", "")
+            if not end:
                 continue
-            output.append(
-                {
+            
+            fiscal_year = get_fiscal_year_from_end_date(end)
+            if not fiscal_year:
+                continue
+            
+            period_type = None
+            if start:
+                period_type = classify_period_by_duration(start, end)
+            else:
+                # No start - assume FY if 10-K
+                period_type = "FY" if entry.get("form") == "10-K" else None
+            
+            if not period_type:
+                continue
+            
+            processed.append({
+                "fiscal_year": fiscal_year,
+                "period_type": period_type,
+                "val": entry["val"],
+                "filed": entry.get("filed", ""),
+                "end": end,
+            })
+        
+        deduped = deduplicate(processed)
+        
+        lookup: dict[tuple[int, str], dict] = {}
+        for entry in deduped:
+            fy = entry["fiscal_year"]
+            pt = entry["period_type"]
+            lookup[(fy, pt)] = entry
+        
+        # Derive Q4
+        all_fys = set(fy for (fy, _) in lookup.keys())
+        for fy in sorted(all_fys):
+            if (fy, "Q4") in lookup:
+                continue
+            
+            ann = lookup.get((fy, "FY"))
+            q3 = lookup.get((fy, "Q3"))
+            
+            if not ann:
+                msg = f"metric={metric_name} FY{fy}: FY annual not available — Q4 skipped"
+                logger.warning(msg)
+                missing_quarters.append(msg)
+                continue
+            
+            if not q3:
+                msg = f"metric={metric_name} FY{fy}: Q3 not available — cannot derive Q4"
+                logger.warning(msg)
+                missing_quarters.append(msg)
+                continue
+            
+            derived_val = ann["val"] - q3["val"]
+            lookup[(fy, "Q4")] = {
+                "fiscal_year": fy,
+                "period_type": "Q4",
+                "val": derived_val,
+                "filed": ann["filed"],
+                "end": ann["end"],
+                "derived": True,
+            }
+            logger.debug("Derived Q4 for %s FY%d: %s - %s = %s", 
+                        metric_name, fy, ann["val"], q3["val"], derived_val)
+        
+        quarter_map = {"Q1": 1, "Q2": 2, "Q3": 3, "Q4": 4}
+        for (fy, pt), entry in sorted(lookup.items()):
+            q = quarter_map.get(pt)
+            if q:
+                output.append({
                     "fiscal_year": fy,
                     "fiscal_quarter": q,
                     "metric": metric_name,
                     "value": entry["val"],
                     "filed_date": entry.get("filed", ""),
-                }
-            )
-
-    # Print summary of missing quarters to stdout (Requirement 4.1)
+                })
+    
     if missing_quarters:
-        print("\n--- Missing fiscal quarters summary ---")
+        print("\n--- Missing fiscal quarters ---")
         for item in missing_quarters:
             print(f"  {item}")
-        print("--- End missing fiscal quarters ---\n")
+        print("--- End missing quarters ---\n")
     else:
         print("No missing fiscal quarters detected.")
-
+    
     return output
 
 
-# ---------------------------------------------------------------------------
-# Entry point
-# ---------------------------------------------------------------------------
+def validate_output(records: list[dict]) -> None:
+    """Validate FY24 Q2=62020, FY25 Q4=76441, FY26 Q2=81273."""
+    validation_targets = [
+        (2024, 2, 62020),
+        (2025, 4, 76441),
+        (2026, 2, 81273),
+    ]
+    
+    print("\n--- Validation checks ---")
+    for target_fy, target_q, expected_val in validation_targets:
+        matches = [r for r in records 
+                   if r["fiscal_year"] == target_fy 
+                   and r["fiscal_quarter"] == target_q 
+                   and r["metric"] == "revenue"]
+        if matches:
+            actual_val = matches[0]["value"]
+            status = "✓" if actual_val == expected_val else "✗"
+            print(f"{status} FY{target_fy} Q{target_q} revenue: expected ${expected_val:,}M, got ${actual_val:,}M")
+        else:
+            print(f"✗ FY{target_fy} Q{target_q} revenue: NOT FOUND")
+    print("--- End validation ---\n")
+
 
 def main() -> None:
     load_dotenv()
 
     user_agent = os.environ.get("SEC_USER_AGENT", "").strip()
     if not user_agent:
-        logger.error(
-            "SEC_USER_AGENT environment variable is not set. "
-            "Set it to 'CompanyName contact@example.com' as required by SEC EDGAR."
-        )
+        logger.error("SEC_USER_AGENT not set")
         sys.exit(1)
 
-    # Fetch
     company_facts = fetch_company_facts(EDGAR_URL, user_agent)
-
-    # Extract
     records = extract_facts(company_facts)
 
     if not records:
-        logger.error("No records extracted — check metric names and EDGAR response")
+        logger.error("No records extracted")
         sys.exit(1)
 
     logger.info("Extracted %d quarterly fact records", len(records))
 
-    # Write output
+    validate_output(records)
+
     OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
     with open(OUTPUT_PATH, "w", encoding="utf-8") as f:
         json.dump(records, f, indent=2, ensure_ascii=False)
