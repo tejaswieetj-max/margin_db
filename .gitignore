@@ -3,6 +3,7 @@
 
 # Large Azure trace dataset
 /data/raw/azure_v2/
+/data/raw/azure/
 
 # Python
 __pycache__/
@@ -16,6 +17,7 @@ dist/
 # Generated data
 data/clean/
 data/raw/msft_facts.json
+data/raw/*.json
 
 # Force-include committed seed files
 !data/raw/events.csv

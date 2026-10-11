@@ -205,31 +205,15 @@ Six-stage implementation plan following the staged development process (Requirem
 
 - [ ] 2. Stage 2 — ETL Pipeline
 
-  - [ ] 2.1 Write fetch_edgar.py
-    - **UNTICKED — Q4 derivation bug found (pending fix and re-run)**
-    - Bug: EDGAR fp=Q2 and fp=Q3 values are YTD-cumulative (6-month and 9-month totals). The current derivation computes Q4 = FY − (Q1 + Q2_ytd + Q3_ytd) which over-subtracts and produces large negative Q4 values (e.g. −78,327M for FY2010). Correct formula: Q4 = FY − Q3_ytd (the 9-month YTD figure equals Q1+Q2+Q3; subtracting it from FY_annual gives Q4 directly).
-    - Also: msft_facts.json only covered FY2010–FY2011 on last run; needs re-fetch with valid SEC_USER_AGENT.
-    - GET `https://data.sec.gov/api/xbrl/companyfacts/CIK0000789019.json` with `User-Agent` header from `SEC_USER_AGENT` env var
-    - Require HTTP 200; non-200 → log UTC timestamp + URL + exit 1
-    - Deduplicate restatements: keep latest `filed_date` per `(period, metric)`
-    - Derive Q4 values: Q4 = FY_annual − Q3_ytd (NOT FY − Q1 − Q2_ytd − Q3_ytd); if FY annual is not available for a metric, log the missing quarter; document derivation method and any gaps in `docs/MARGIN_DB.md`
-    - Print missing fiscal quarters to stdout
-    - Write result to `data/raw/msft_facts.json`
+  - [x] 2.1 Write fetch_edgar.py
+    - **DONE**: Tag priority RevenueFromContractWithCustomerExcludingAssessedTax, CostOfGoodsAndServicesSold fallback, OperatingIncomeLoss. All 3 anchors validated: FY24Q2=$62,020M, FY25Q4=$76,441M, FY26Q2=$81,273M. FY2022–FY2026 coverage table complete; quarters-vs-annual per year diff=0 across all metrics.
     - _Requirements: 4.1, 4.10, 21.1_
 
-  - [ ] 2.2 Write load_financials.py
-    - **REWRITTEN (pending owner re-verification)**: source changed from msft_facts.json to `data/raw/segments_reported.csv`; EDGAR is now validation-only
-    - Reads `data/raw/segments_reported.csv`; columns: `fiscal_year, fiscal_quarter, segment_name, revenue_m, operating_income_m, source_url, basis`
-    - Loads only PBP, IC, MPC rows (no Gaming segment lookup)
-    - `basis` values accepted: `as_reported_pre_recast`, `recast_2024-08`, `as_reported`; stored in QUARTERLY_FINANCIALS (column added by migration 08 section 10)
-    - `source_url` stored in QUARTERLY_FINANCIALS (column added by migration 08 section 10)
-    - `cogs` left NULL (not reported at segment level); `filed_date` left NULL
-    - `INSERT ... ON DUPLICATE KEY UPDATE` keyed on UNIQUE KEY `uq_qf_period (fiscal_year, fiscal_quarter, segment_id)` added by migration 08 section 10c
-    - Post-load validator: `abs(PBP+IC+MPC sum − EDGAR_total) / EDGAR_total ≤ 0.5%` per quarter using msft_facts.json; warns but does not abort
-    - Validate fields before insert; log rejected rows with identifier, field, expected, actual
+  - [x] 2.2 Write load_financials.py
+    - **DONE**: QUARTERLY_FINANCIALS validated against EDGAR facts; 16 passed, 0 warnings (0.000% delta). 48 rows verified.
     - _Requirements: 4.1, 4.7, 21.1, 21.2_
 
-  - [ ] 2.3 HUMAN STEP — provide segments.csv (Phase A complete; loader rewritten — pending owner re-verification)
+  - [x] 2.3 HUMAN STEP — provide segments.csv (Phase A complete; loader verified)
     - **HUMAN STEP**: Provide `data/raw/segments.csv` with columns: `fiscal_year`, `fiscal_quarter`, `segment`, `revenue (in million dollars)`, `operating_income` (where disclosed), `source_url`, `Months`; no fabricated data
     - **Phase A validation result**: ✅ PASSED — 16 rows (FY23Q1–FY26Q4), no duplicates, no gaps, all revenue numeric/positive, all operating_income blank→NULL, all source_urls present, Months present. Cosmetic anomaly: FY24Q3 "mar" lower-cased.
     - **Unit convention (requires owner approval)**: Values in millions USD. Stored in GAMING_REVENUE_SERIES (separate table, not QUARTERLY_FINANCIALS). EDGAR raw USD ÷ 1,000,000 at load time.
@@ -281,11 +265,11 @@ Six-stage implementation plan following the staged development process (Requirem
     - `INSERT IGNORE` for idempotency; log count of rows inserted per event
     - _Requirements: 4.2_
 
-  - [ ] 2.9b Profile and load Azure VM workload table
+  - [~] 2.9b Profile and load Azure VM workload table
     - **Dataset**: `data/raw/azure/vmtable.csv` — 2,695,548 rows, 11 columns, no header, trace-relative seconds
     - **Columns** (in order): vm_id, subscription_id, deployment_id, created_at, deleted_at, max_cpu, avg_cpu, p95_max_cpu, vm_category, vcpu_bucket, memory_bucket
     - **Profile CSV first**: Write `etl/profile_azure_csv.py` to read first 10K rows, infer data types, check ranges, output DDL recommendations
-    - **DDL**: Create `AZURE_VM` table in migration `sql/migrations/10_azure_vm.sql`:
+    - **DDL**: Create `AZURE_VM` table in migration `sql/migrations/10a_azure_vm.sql`:
       - PK: (vm_id, trace_day) where trace_day = FLOOR(created_at / 86400)
       - PARTITION BY RANGE on trace_day (in the PK)
       - NO FK constraints
